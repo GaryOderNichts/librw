@@ -18,6 +18,7 @@
 #include "d3d/rwd3d9.h"
 #include "gl/rwwdgl.h"
 #include "gl/rwgl3.h"
+#include "gx2/rwgx2.h"
 
 #define PLUGIN_ID 2
 
@@ -251,6 +252,8 @@ destroyNativeData(void *object, int32 offset, int32 size)
 		return d3d9::destroyNativeData(object, offset, size);
 	if(geometry->instData->platform == PLATFORM_GL3)
 		return gl3::destroyNativeData(object, offset, size);
+	if(geometry->instData->platform == PLATFORM_GX2)
+		return gx2::destroyNativeData(object, offset, size);
 	return object;
 }
 

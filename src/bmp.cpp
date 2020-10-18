@@ -70,7 +70,8 @@ BMPheader::write(Stream *stream)
 Image*
 readBMP(const char *filename)
 {
-	ASSERTLITTLE;
+	// TODO figure out if this is really big endian safe
+	// ASSERTLITTLE;
 	Image *image;
 	uint32 length;
 	uint8 *data;
@@ -196,7 +197,8 @@ lose:
 void
 writeBMP(Image *image, const char *filename)
 {
-	ASSERTLITTLE;
+	// TODO figure out if this is really big endian safe
+	// ASSERTLITTLE;
 	uint8 *p;
 	StreamFile file;
 	if(!file.open(filename, "wb")){

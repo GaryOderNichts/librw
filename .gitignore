@@ -7,3 +7,6 @@
 librw.vcxproj.user
 librw.VC.db
 librw.VC.VC.opendb
+*.d
+*.o
+/.vscode

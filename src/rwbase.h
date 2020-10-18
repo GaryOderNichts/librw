@@ -15,6 +15,10 @@
 //#define RW_GL_USE_VAOS
 #endif
 
+#ifdef __WIIU__
+#define RWDEVICE gx2
+#endif
+
 #ifdef RW_GLES2
 #define RW_GLES
 #endif
@@ -537,6 +541,7 @@ enum Platform
 
 	PLATFORM_WDGL = 11,	// WarDrum OpenGL
 	PLATFORM_GL3  = 12,	// my GL3 implementation
+	PLATFORM_GX2  = 13, // Wii U GX2 implementation
 
 	NUM_PLATFORMS,
 
@@ -609,6 +614,7 @@ enum PluginID
 	ID_RASTERD3D9    = MAKEPLUGINID(VEND_RASTER, PLATFORM_D3D9),
 	ID_RASTERWDGL    = MAKEPLUGINID(VEND_RASTER, PLATFORM_WDGL),
 	ID_RASTERGL3     = MAKEPLUGINID(VEND_RASTER, PLATFORM_GL3),
+	ID_RASTERGX2     = MAKEPLUGINID(VEND_RASTER, PLATFORM_GX2),
 
 	// anything driver/device related (only as allocation tag)
 	ID_DRIVER        = MAKEPLUGINID(VEND_DRIVER, 0)

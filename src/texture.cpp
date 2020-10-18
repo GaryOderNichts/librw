@@ -15,6 +15,7 @@
 #include "d3d/rwd3d8.h"
 #include "d3d/rwd3d9.h"
 #include "gl/rwgl3.h"
+#include "gx2/rwgx2.h"
 
 #define PLUGIN_ID 0
 
@@ -479,6 +480,8 @@ Texture::streamReadNative(Stream *stream)
 		return xbox::readNativeTexture(stream);
 	if(platform == PLATFORM_GL3)
 		return gl3::readNativeTexture(stream);
+	if(platform == PLATFORM_GX2)
+		return gx2::readNativeTexture(stream);
 	assert(0 && "unsupported platform");
 	return nil;
 }
@@ -496,6 +499,8 @@ Texture::streamWriteNative(Stream *stream)
 		xbox::writeNativeTexture(this, stream);
 	else if(this->raster->platform == PLATFORM_GL3)
 		gl3::writeNativeTexture(this, stream);
+	else if(this->raster->platform == PLATFORM_GX2)
+		gx2::writeNativeTexture(this, stream);
 	else
 		assert(0 && "unsupported platform");
 }
@@ -513,6 +518,8 @@ Texture::streamGetSizeNative(void)
 		return xbox::getSizeNativeTexture(this);
 	if(this->raster->platform == PLATFORM_GL3)
 		return gl3::getSizeNativeTexture(this);
+	if(this->raster->platform == PLATFORM_GX2)
+		return gx2::getSizeNativeTexture(this);
 	assert(0 && "unsupported platform");
 	return 0;
 }
