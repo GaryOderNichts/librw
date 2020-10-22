@@ -264,14 +264,14 @@ flushGX2RenderState(void)
 	if (blendNeedsRefresh)
 	{
 		GX2SetBlendControl(GX2_RENDER_TARGET_0,
-							oldGX2State.blendEnable ? GX2_BLEND_MODE_SRC_ALPHA : GX2_BLEND_MODE_ONE,
-							oldGX2State.blendEnable ? GX2_BLEND_MODE_INV_SRC_ALPHA : GX2_BLEND_MODE_ZERO,
-                            GX2_BLEND_COMBINE_MODE_ADD,
-						    TRUE,
-                            oldGX2State.srcblend,
-						    oldGX2State.destblend,
-                            GX2_BLEND_COMBINE_MODE_ADD);
-        GX2SetColorControl(GX2_LOGIC_OP_COPY, oldGX2State.blendEnable ? 0xFF : 0, FALSE, TRUE);
+					oldGX2State.blendEnable ? GX2_BLEND_MODE_SRC_ALPHA : GX2_BLEND_MODE_ONE,
+					oldGX2State.blendEnable ? GX2_BLEND_MODE_INV_SRC_ALPHA : GX2_BLEND_MODE_ZERO,
+					GX2_BLEND_COMBINE_MODE_ADD,
+					TRUE,
+					oldGX2State.srcblend,
+					oldGX2State.destblend,
+					GX2_BLEND_COMBINE_MODE_ADD);
+		GX2SetColorControl(GX2_LOGIC_OP_COPY, oldGX2State.blendEnable ? 0xFF : 0, FALSE, TRUE);
 	}
 
 	if (depthNeedsRefresh)
@@ -449,7 +449,7 @@ setRasterStageOnly(uint32 stage, Raster *raster)
 			assert(raster->platform == PLATFORM_GX2);
 			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
 			GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
-    		GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
+			GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
 
 			rwStateCache.texstage[stage].filter = (rw::Texture::FilterMode)natras->filterMode;
 			rwStateCache.texstage[stage].addressingU = (rw::Texture::Addressing)natras->addressU;
@@ -491,7 +491,7 @@ setRasterStage(uint32 stage, Raster *raster)
 			assert(raster->platform == PLATFORM_GX2);
 			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
 			GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
-    		GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
+			GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
 			uint32 filter = rwStateCache.texstage[stage].filter;
 			uint32 addrU = rwStateCache.texstage[stage].addressingU;
 			uint32 addrV = rwStateCache.texstage[stage].addressingV;
@@ -1291,10 +1291,8 @@ closeGX2(void)
 
 void createWhiteTexture(void)
 {
-	int width = 128;
-	int height = 128;
-	whitetex.surface.width = width;
-	whitetex.surface.height = height;
+	whitetex.surface.width = 128;
+	whitetex.surface.height = 128;
 	whitetex.surface.depth = 1;
 	whitetex.surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
 	whitetex.surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
@@ -1333,12 +1331,20 @@ initGX2()
 
 	resetRenderState();
 
-	defaultShader = Shader::create(default_gsh);
+	#include "shaders/im3d.h"
 
+	// TODO: create and use default shader (using im3d for now)
+	//defaultShader = Shader::create(default_gsh);
+	defaultShader = Shader::create(im3d_gsh);
+
+	// defaultShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
+	// defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
+	// defaultShader->initAttribute("in_color", 24, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
+	// defaultShader->initAttribute("in_tex0", 40, GX2_ATTRIB_FORMAT_FLOAT_32_32);
 	defaultShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
-	defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
-	defaultShader->initAttribute("in_color", 24, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
-	defaultShader->initAttribute("in_tex0", 40, GX2_ATTRIB_FORMAT_FLOAT_32_32);
+	// defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
+	defaultShader->initAttribute("in_color", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
+	defaultShader->initAttribute("in_tex0", 28, GX2_ATTRIB_FORMAT_FLOAT_32_32);
 
 	defaultShader->init();
 	defaultShader->use();
@@ -1363,6 +1369,8 @@ termGX2()
 
 	closeIm3D();
 	closeIm2D();
+
+	free(whitetex.surface.image);
 
 	return 1;
 }

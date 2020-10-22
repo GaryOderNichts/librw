@@ -35,16 +35,16 @@ rasterCreateTexture(Raster *raster)
 
 	GX2Texture* tex = (GX2Texture*) natras->texture;
 	memset(tex, 0, sizeof(GX2Texture));
-    tex->surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+	tex->surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
 	tex->surface.use = GX2_SURFACE_USE_TEXTURE;
-    tex->surface.width = raster->width;
-    tex->surface.height = raster->height;
-    tex->surface.depth = 1;
-    tex->surface.mipLevels = 1;
-    tex->surface.aa = GX2_AA_MODE1X;
+	tex->surface.width = raster->width;
+	tex->surface.height = raster->height;
+	tex->surface.depth = 1;
+	tex->surface.mipLevels = 1;
+	tex->surface.aa = GX2_AA_MODE1X;
 	tex->surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
 	tex->viewNumMips = 1;
-    tex->viewNumSlices = 1;
+	tex->viewNumSlices = 1;
 	tex->compMap = 0x00010203;
 
 	switch(raster->format & 0xF00){

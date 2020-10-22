@@ -24,8 +24,8 @@ namespace gx2 {
 void
 drawInst_simple(InstanceDataHeader *header, InstanceData *inst)
 {
-    flushCache();
-    GX2RDrawIndexed(header->primType, &header->indexBuffer, GX2_INDEX_TYPE_U16, inst->numIndex, 0, inst->startIndex, 1);
+	flushCache();
+	GX2DrawIndexedEx(header->primType, inst->numIndex, GX2_INDEX_TYPE_U16, header->indexBuffer, inst->startIndex, 1);
 }
 
 void
@@ -102,7 +102,10 @@ defaultRenderCB(Atomic *atomic, InstanceDataHeader *header)
 	setWorldMatrix(atomic->getFrame()->getLTM());
 	lightingCB(atomic);
 
-    GX2RSetAttributeBuffer(&header->vertexBuffer, 0, (3 + 3 + 4 + 2) * sizeof(float), 0);
+	// uint32 stride = 3 + 3 + 4 + 2;
+	uint32 stride = 3 + 4 + 2;
+	uint32 bufSize = stride * sizeof(float) * header->totalNumVertex;
+	GX2SetAttribBuffer(0, bufSize, stride * sizeof(float), header->vertexBuffer);
 
 	InstanceData *inst = header->inst;
 	int32 n = header->numMeshes;

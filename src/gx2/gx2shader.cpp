@@ -19,31 +19,31 @@ namespace gx2 {
 
 GX2SamplerVar *GX2GetPixelSamplerVar(const GX2PixelShader *shader, const char *name)
 {
-    for (uint32_t i = 0; i < shader->samplerVarCount; i++)
-    {
-       if (strcmp(shader->samplerVars[i].name, name) == 0)
-           return &(shader->samplerVars[i]);
-    }
+	for (uint32_t i = 0; i < shader->samplerVarCount; i++)
+	{
+	   if (strcmp(shader->samplerVars[i].name, name) == 0)
+		   return &(shader->samplerVars[i]);
+	}
 
-    return NULL;
+	return NULL;
 }
 
 uint32 GX2GetPixelSamplerVarLocation(const GX2PixelShader *shader, const char *name)
 {
-    GX2SamplerVar *sampler = GX2GetPixelSamplerVar(shader, name);
-    return sampler ? sampler->location : -1;
+	GX2SamplerVar *sampler = GX2GetPixelSamplerVar(shader, name);
+	return sampler ? sampler->location : -1;
 }
 
 uint32 GX2GetPixelUniformVarOffset(const GX2PixelShader *shader, const char *name)
 {
-    GX2UniformVar *uniform = GX2GetPixelUniformVar(shader, name);
-    return uniform ? uniform->offset : -1;
+	GX2UniformVar *uniform = GX2GetPixelUniformVar(shader, name);
+	return uniform ? uniform->offset : -1;
 }
 
 uint32 GX2GetVertexUniformVarOffset(const GX2VertexShader *shader, const char *name)
 {
-    GX2UniformVar *uniform = GX2GetVertexUniformVar(shader, name);
-    return uniform ? uniform->offset : -1;
+	GX2UniformVar *uniform = GX2GetVertexUniformVar(shader, name);
+	return uniform ? uniform->offset : -1;
 }
 
 UniformRegistry uniformRegistry;
@@ -55,7 +55,7 @@ registerUniform(const char *name)
 	if(i >= 0) return i;
 
 	if(uniformRegistry.numUniforms + 1 >= MAX_UNIFORMS)
-    {
+	{
 		assert(0 && "no space for uniform");
 		return -1;
 	}
@@ -67,19 +67,19 @@ int32
 findUniform(const char *name)
 {
 	for(int i = 0; i < uniformRegistry.numUniforms; i++)
-    {
+	{
 		if(strcmp(name, uniformRegistry.uniformNames[i]) == 0)
 			return i;
-    }
+	}
 	return -1;
 }
 
 void setUniform(int32 location, int32 count, const void* data)
 {
-    if (currentShader->uniforms[location].pixelLocation != -1)
-        GX2SetPixelUniformReg(currentShader->uniforms[location].pixelLocation, count, data);
-    if (currentShader->uniforms[location].vertexLocation != -1)
-        GX2SetVertexUniformReg(currentShader->uniforms[location].vertexLocation, count, data);
+	if (currentShader->uniforms[location].pixelLocation != -1)
+		GX2SetPixelUniformReg(currentShader->uniforms[location].pixelLocation, count, data);
+	if (currentShader->uniforms[location].vertexLocation != -1)
+		GX2SetVertexUniformReg(currentShader->uniforms[location].vertexLocation, count, data);
 }
 
 Shader *currentShader;
@@ -87,50 +87,48 @@ Shader *currentShader;
 Shader*
 Shader::create(const void *data)
 {
-    Shader *sh = rwNewT(Shader, 1, MEMDUR_EVENT | ID_DRIVER);
+	Shader *sh = rwNewT(Shader, 1, MEMDUR_EVENT | ID_DRIVER);
 
-    if (!WHBGfxLoadGFDShaderGroup(&sh->group, 0, data))
-    {
-        rwFree(sh);
-        return nil;
-    }
+	if (!WHBGfxLoadGFDShaderGroup(&sh->group, 0, data))
+	{
+		rwFree(sh);
+		return nil;
+	}
 
-    sh->numFloats = 0;
-
-    return sh;
+	return sh;
 }
 
 bool Shader::initAttribute(const char* name, uint32 offset, GX2AttribFormat format)
 {
-    if (!WHBGfxInitShaderAttribute(&group, name, 0, offset, format))
-        return false;
+	if (!WHBGfxInitShaderAttribute(&group, name, 0, offset, format))
+		return false;
 
-    return true;
+	return true;
 }
 
 bool Shader::init(void)
 {
-    if (!WHBGfxInitFetchShader(&group))
-        return false;
+	if (!WHBGfxInitFetchShader(&group))
+		return false;
 
 	uniforms = rwNewT(Uniform, uniformRegistry.numUniforms, MEMDUR_EVENT | ID_DRIVER);
 	for(int i = 0; i < uniformRegistry.numUniforms; i++)
-    {
+	{
 		uniforms[i].pixelLocation = GX2GetPixelUniformVarOffset(group.pixelShader, uniformRegistry.uniformNames[i]);
-        uniforms[i].vertexLocation = GX2GetVertexUniformVarOffset(group.vertexShader, uniformRegistry.uniformNames[i]);
-    }
+		uniforms[i].vertexLocation = GX2GetVertexUniformVarOffset(group.vertexShader, uniformRegistry.uniformNames[i]);
+	}
 
-    return true;
+	return true;
 }
 
 void
 Shader::use(void)
 {
 	if(currentShader != this)
-    {
+	{
 		GX2SetFetchShader(&group.fetchShader);
-        GX2SetVertexShader(group.vertexShader);
-        GX2SetPixelShader(group.pixelShader);
+		GX2SetVertexShader(group.vertexShader);
+		GX2SetPixelShader(group.pixelShader);
 		currentShader = this;
 	}
 }
@@ -138,8 +136,8 @@ Shader::use(void)
 void
 Shader::destroy(void)
 {
-    WHBGfxFreeShaderGroup(&group);
-    rwFree(this->uniforms);
+	WHBGfxFreeShaderGroup(&group);
+	rwFree(this->uniforms);
 	rwFree(this);
 }
 

@@ -80,14 +80,14 @@ void
 freeIm2DBuffers(void)
 {
 	for (uint32_t i = 0; i < im2DVbo.size(); i++) {
-        free(im2DVbo[i]);
-    }
+		free(im2DVbo[i]);
+	}
 	for (uint32_t i = 0; i < im2DIbo.size(); i++) {
-        free(im2DIbo[i]);
-    }
+		free(im2DIbo[i]);
+	}
 
 	im2DVbo.clear();
-    im2DIbo.clear();
+	im2DIbo.clear();
 }
 
 static Im2DVertex tmpprimbuf[3];
@@ -118,7 +118,7 @@ im2DRenderPrimitive(PrimitiveType primType, void *vertices, int32 numVertices)
 		return;
 
 	uint32 vbo_lenght = numVertices * 10 * sizeof(float);
-    float* vbo_verts = (float*) malloc(vbo_lenght);
+	float* vbo_verts = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, vbo_lenght);
 	im2DVbo.push_back(vbo_verts);
 
 	int v = 0;
@@ -170,18 +170,18 @@ im2DRenderIndexedPrimitive(PrimitiveType primType,
 		return;
 
 	uint32 ibo_lenght = numIndices * sizeof(uint16);
-    uint16* ibo_indices = (uint16*) malloc(ibo_lenght);
+	uint16* ibo_indices = (uint16*) memalign(GX2_INDEX_BUFFER_ALIGNMENT, ibo_lenght);
 	im2DIbo.push_back(ibo_indices);
 
 	memcpy(ibo_indices, indices, ibo_lenght);
 
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, ibo_indices, ibo_lenght);
 
-    uint32_t vbo_index = im2DVbo.size();
-    im2DVbo.resize(vbo_index+1);
+	uint32_t vbo_index = im2DVbo.size();
+	im2DVbo.resize(vbo_index+1);
 
 	uint32 vbo_lenght = numVertices * 10 * sizeof(float);
-    float* vbo_verts = (float*) malloc(vbo_lenght);
+	float* vbo_verts = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, vbo_lenght);
 	im2DVbo.push_back(vbo_verts);
 
 	int v = 0;
@@ -261,14 +261,14 @@ void
 freeIm3DBuffers(void)
 {
 	for (uint32_t i = 0; i < im3DVbo.size(); i++) {
-        free(im3DVbo[i]);
-    }
+		free(im3DVbo[i]);
+	}
 	for (uint32_t i = 0; i < im3DIbo.size(); i++) {
-        free(im3DIbo[i]);
-    }
+		free(im3DIbo[i]);
+	}
 
 	im3DVbo.clear();
-    im3DIbo.clear();
+	im3DIbo.clear();
 }
 
 void
@@ -285,7 +285,7 @@ im3DTransform(void *vertices, int32 numVertices, Matrix *world, uint32 flags)
 	im3DShader->use();
 
 	uint32 vbo_lenght = numVertices * 9 * sizeof(float);
-    float* vbo_verts = (float*) malloc(vbo_lenght);
+	float* vbo_verts = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, vbo_lenght);
 	im3DVbo.push_back(vbo_verts);
 
 	int v = 0;
@@ -323,7 +323,7 @@ void
 im3DRenderIndexedPrimitive(PrimitiveType primType, void *indices, int32 numIndices)
 {
 	uint32 ibo_lenght = numIndices * sizeof(uint16);
-    uint16* ibo_indices = (uint16*) malloc(ibo_lenght);
+	uint16* ibo_indices = (uint16*) memalign(GX2_INDEX_BUFFER_ALIGNMENT, ibo_lenght);
 	im3DIbo.push_back(ibo_indices);
 
 	memcpy(ibo_indices, indices, numIndices * sizeof(uint16));

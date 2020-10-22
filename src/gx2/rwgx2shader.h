@@ -30,8 +30,7 @@ void setUniform(int32 location, int32 count, const void* data);
 
 struct Shader
 {
-    WHBGfxShaderGroup group;
-	uint8 numFloats;
+	WHBGfxShaderGroup group;
 
 	uint32 samplerLocation;
 	// if a shader has a second sampler this can be used

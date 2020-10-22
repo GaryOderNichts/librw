@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <malloc.h>
 
 #include "../rwbase.h"
 #include "../rwerror.h"
@@ -28,8 +29,8 @@ freeInstanceData(Geometry *geometry)
 		return;
 	InstanceDataHeader *header = (InstanceDataHeader*)geometry->instData;
 	geometry->instData = nil;
-	GX2RDestroyBufferEx(&header->indexBuffer, (GX2RResourceFlags) 0);
-	GX2RDestroyBufferEx(&header->vertexBuffer, (GX2RResourceFlags) 0);
+	free(header->indexBuffer);
+	free(header->vertexBuffer);
 	rwFree(header->inst);
 	rwFree(header);
 }
@@ -56,12 +57,9 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 	header->totalNumIndex = meshh->totalIndices;
 	header->inst = rwNewT(InstanceData, header->numMeshes, MEMDUR_EVENT | ID_GEOMETRY);
 
-	header->indexBuffer.flags = (GX2RResourceFlags) (GX2R_RESOURCE_BIND_INDEX_BUFFER | GX2R_RESOURCE_USAGE_CPU_READ | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
-	header->indexBuffer.elemSize = 2;
-	header->indexBuffer.elemCount = header->totalNumIndex;
-	GX2RCreateBuffer(&header->indexBuffer);
+	header->indexBuffer = (uint16*) memalign(GX2_INDEX_BUFFER_ALIGNMENT, header->totalNumIndex * 2);
 
-	uint16* indices = (uint16*) GX2RLockBufferEx(&header->indexBuffer, (GX2RResourceFlags) 0);
+	uint16* indices = header->indexBuffer;
 	InstanceData *inst = header->inst;
 	Mesh *mesh = meshh->getMeshes();
 	uint32 startindex = 0;
@@ -82,7 +80,7 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 		mesh++;
 		inst++;
 	}
-	GX2RUnlockBufferEx(&header->indexBuffer, (GX2RResourceFlags) 0);
+	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, header->indexBuffer, header->totalNumIndex * 2);
 
 	return header;
 }
@@ -99,7 +97,7 @@ instance(rw::ObjPipeline *rwpipe, Atomic *atomic)
 	InstanceDataHeader *header = (InstanceDataHeader*)geo->instData;
 	if(geo->instData){
 		// Already have instanced data, so check if we have to reinstance
-		assert(header->platform == PLATFORM_GL3);
+		assert(header->platform == PLATFORM_GX2);
 		if(header->serialNumber != geo->meshHeader->serialNum){
 			// Mesh changed, so reinstance everything
 			freeInstanceData(geo);
@@ -119,35 +117,7 @@ instance(rw::ObjPipeline *rwpipe, Atomic *atomic)
 static void
 uninstance(rw::ObjPipeline *rwpipe, Atomic *atomic)
 {
-	ObjPipeline *pipe = (ObjPipeline*)rwpipe;
-	Geometry *geo = atomic->geometry;
-	if((geo->flags & Geometry::NATIVE) == 0)
-		return;
-	assert(geo->instData != nil);
-	assert(geo->instData->platform == PLATFORM_GX2);
-	geo->numTriangles = geo->meshHeader->guessNumTriangles();
-	geo->allocateData();
-	geo->allocateMeshes(geo->meshHeader->numMeshes, geo->meshHeader->totalIndices, 0);
-
-	InstanceDataHeader *header = (InstanceDataHeader*)geo->instData;
-	uint16 *indices = (uint16*) GX2RLockBufferEx(&header->indexBuffer, (GX2RResourceFlags) 0);
-	InstanceData *inst = header->inst;
-	Mesh *mesh = geo->meshHeader->getMeshes();
-	for(uint32 i = 0; i < header->numMeshes; i++){
-		if(inst->minVert == 0)
-			memcpy(mesh->indices, &indices[inst->startIndex], inst->numIndex*2);
-		else
-			for(uint32 j = 0; j < inst->numIndex; j++)
-				mesh->indices[j] = indices[inst->startIndex+j] + inst->minVert;
-		mesh++;
-		inst++;
-	}
-	GX2RUnlockBufferEx(&header->indexBuffer, (GX2RResourceFlags) 0);
-
-	pipe->uninstanceCB(geo, header);
-	geo->generateTriangles();
-	geo->flags &= ~Geometry::NATIVE;
-	destroyNativeData(geo, 0, 0);
+	assert(0 && "can't uninstance");
 }
 
 static void
@@ -157,7 +127,7 @@ render(rw::ObjPipeline *rwpipe, Atomic *atomic)
 	Geometry *geo = atomic->geometry;
 	pipe->instance(atomic);
 	assert(geo->instData != nil);
-	assert(geo->instData->platform == PLATFORM_GL3);
+	assert(geo->instData->platform == PLATFORM_GX2);
 	if(pipe->renderCB)
 		pipe->renderCB(atomic, (InstanceDataHeader*)geo->instData);
 }
@@ -190,22 +160,21 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 
 	// TODO: make all of this less hardcoded
 
-	int stride = 3 + 3 + 4 + 2;
+	// uint32 stride = 3 + 3 + 4 + 2;
+	uint32 stride = 3 + 4 + 2;
+	uint32 bufSize = stride * sizeof(float) * header->totalNumVertex;
 
 	if(!reinstance)
 	{
-		header->vertexBuffer.flags = (GX2RResourceFlags) (GX2R_RESOURCE_BIND_VERTEX_BUFFER | GX2R_RESOURCE_USAGE_CPU_READ | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
-		header->vertexBuffer.elemSize = stride * sizeof(float);
-		header->vertexBuffer.elemCount = header->totalNumVertex;
-		GX2RCreateBuffer(&header->vertexBuffer);
+		header->vertexBuffer = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, bufSize);
 	}
 
 	//
 	// Fill vertex buffer
 	//
 
-	float* verts = (float*) GX2RLockBufferEx(&header->vertexBuffer, (GX2RResourceFlags) 0);
-	// TODO we should rather not set an attribute instead of setting everything to 0
+	float* verts = header->vertexBuffer;
+	// TODO also initialize unused attribs instead of setting everything to 0
 	memset(verts, 0, header->totalNumVertex * stride);
 
 	// Positions
@@ -214,6 +183,7 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 		for (int i = 0; i < header->totalNumVertex; i++)
 		{
 			V3d vert = geo->morphTargets[0].vertices[i];
+			WHBLogPrintf("vert: %f %f %f", vert.x, vert.y, vert.z);
 			verts[v] = vert.x;
 			verts[v+1] = vert.y;
 			verts[v+2] = vert.z;
@@ -222,19 +192,19 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 		}
 	}
 
-	// Normals
-	if(hasNormals && (!reinstance || geo->lockedSinceInst&Geometry::LOCKNORMALS)){
-		int v = 3;
-		for (int i = 0; i < header->totalNumVertex; i++)
-		{
-			V3d vert = geo->morphTargets[0].normals[i];
-			verts[v] = vert.x;
-			verts[v+1] = vert.y;
-			verts[v+2] = vert.z;
+	// // Normals
+	// if(hasNormals && (!reinstance || geo->lockedSinceInst&Geometry::LOCKNORMALS)){
+	// 	int v = 3;
+	// 	for (int i = 0; i < header->totalNumVertex; i++)
+	// 	{
+	// 		V3d vert = geo->morphTargets[0].normals[i];
+	// 		verts[v] = vert.x;
+	// 		verts[v+1] = vert.y;
+	// 		verts[v+2] = vert.z;
 
-			v += stride;
-		}
-	}
+	// 		v += stride;
+	// 	}
+	// }
 
 	// Prelighting
 	if(isPrelit && (!reinstance || geo->lockedSinceInst&Geometry::LOCKPRELIGHT)){
@@ -243,22 +213,39 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 		while(n--){
 			assert(inst->minVert != 0xFFFFFFFF);
 			// TODO
+			// int v = 6;
+			int v = 3;
+			for (int i = 0; i < header->totalNumVertex; i++)
+			{
+				V3d vert = geo->morphTargets[0].normals[i];
+				verts[v] = 1.0f;
+				verts[v+1] = 1.0f;
+				verts[v+2] = 1.0f;
+				verts[v+3] = 1.0f;
+
+				v += stride;
+			}
 		}
 	}
 
 	if(!reinstance || geo->lockedSinceInst&(Geometry::LOCKTEXCOORDS<<0)){
-		int v = 10;
-		for (int i = 0; i < header->totalNumVertex; i++)
+		// TODO support all texcoord sets
+		if (geo->numTexCoordSets > 0)
 		{
-			TexCoords coo = geo->texCoords[0][i];
-			verts[v] = coo.u;
-			verts[v+1] = coo.v;
+			// int v = 10;
+			int v = 7;
+			for (int i = 0; i < header->totalNumVertex; i++)
+			{
+				TexCoords coo = geo->texCoords[0][i];
+				verts[v] = coo.u;
+				verts[v+1] = coo.v;
 
-			v += stride;
+				v += stride;
+			}
 		}
 	}
 
-	GX2RUnlockBufferEx(&header->vertexBuffer, (GX2RResourceFlags) 0);
+	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, verts, bufSize);
 }
 
 void

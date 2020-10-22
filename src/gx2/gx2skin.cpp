@@ -48,16 +48,40 @@ skinRenderCB(Atomic *atomic, InstanceDataHeader *header)
 
 }
 
+static void*
+skinOpen(void *o, int32, int32)
+{
+	skinGlobals.pipelines[PLATFORM_GX2] = makeSkinPipeline();
+
+	return o;
+}
+
+static void*
+skinClose(void *o, int32, int32)
+{
+	((ObjPipeline*)skinGlobals.pipelines[PLATFORM_GX2])->destroy();
+	skinGlobals.pipelines[PLATFORM_GX2] = nil;
+
+	return o;
+}
+
 void
 initSkin(void)
 {
-
+	Driver::registerPlugin(PLATFORM_GX2, 0, ID_SKIN,
+	                       skinOpen, skinClose);
 }
 
 ObjPipeline*
 makeSkinPipeline(void)
 {
-
+	ObjPipeline *pipe = ObjPipeline::create();
+	pipe->instanceCB = skinInstanceCB;
+	pipe->uninstanceCB = skinUninstanceCB;
+	pipe->renderCB = skinRenderCB;
+	pipe->pluginID = ID_SKIN;
+	pipe->pluginData = 1;
+	return pipe;
 }
 
 }

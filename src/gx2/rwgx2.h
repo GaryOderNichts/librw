@@ -70,9 +70,9 @@ struct InstanceDataHeader : rw::InstanceDataHeader
 {
 	uint32  serialNumber;
 	uint32  numMeshes;
-	GX2RBuffer indexBuffer;
+	uint16* indexBuffer;
 	GX2PrimitiveMode  primType;
-	GX2RBuffer vertexBuffer;
+	float* vertexBuffer;
 	uint32  totalNumIndex;
 	uint32  totalNumVertex;
 
