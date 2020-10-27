@@ -2044,8 +2044,24 @@ readNativeTexture(Stream *stream)
 		RWERROR((ERR_CHUNK, "STRUCT"));
 		goto fail;
 	}
-	ASSERTLITTLE;
 	stream->read8(&streamExt, 0x40);
+
+#ifdef BIGENDIAN
+	memNative32(&streamExt.width, 4);
+	memNative32(&streamExt.height, 4);
+	memNative32(&streamExt.depth, 4);
+	memNative16(&streamExt.rasterFormat, 2);
+	memNative16(&streamExt.version, 2);
+	streamExt.tex0 = __builtin_bswap64(streamExt.tex0);
+	memNative32(&streamExt.paletteOffset, 4);
+	memNative32(&streamExt.tex1low, 4);
+	streamExt.miptbp1 = __builtin_bswap64(streamExt.miptbp1);
+	streamExt.miptbp2 = __builtin_bswap64(streamExt.miptbp2);
+	memNative32(&streamExt.pixelSize, 4);
+	memNative32(&streamExt.paletteSize, 4);
+	memNative32(&streamExt.totalSize, 4);
+	memNative32(&streamExt.mipmapVal, 4);
+#endif
 /*
 printf("%X %X %X %X %X %016llX %X %X %016llX %016llX %X %X %X %X\n",
 streamExt.width,
