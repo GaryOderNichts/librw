@@ -15,6 +15,7 @@
 #include <gx2r/mem.h>
 #include <gx2r/buffer.h>
 #include <gx2r/draw.h>
+#include <gx2r/surface.h>
 #endif
 
 namespace rw {

@@ -183,7 +183,6 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 		for (int i = 0; i < header->totalNumVertex; i++)
 		{
 			V3d vert = geo->morphTargets[0].vertices[i];
-			WHBLogPrintf("vert: %f %f %f", vert.x, vert.y, vert.z);
 			verts[v] = vert.x;
 			verts[v+1] = vert.y;
 			verts[v+2] = vert.z;
