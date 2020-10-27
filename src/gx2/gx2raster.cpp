@@ -72,13 +72,10 @@ rasterCreateTexture(Raster *raster)
 		return nil;
 	}
 
-	GX2CalcSurfaceSizeAndAlignment(&tex->surface);
+	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
 	GX2InitTextureRegs(tex);
 
 	raster->stride = tex->surface.width * natras->bpp;
-
-	tex->surface.image = memalign(tex->surface.alignment, tex->surface.imageSize);
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, tex->surface.image, tex->surface.imageSize);
 
 	natras->addressU = 0;
 	natras->addressV = 0;
@@ -230,7 +227,6 @@ rasterCreate(Raster *raster)
 uint8*
 rasterLock(Raster *raster, int32 level, int32 lockMode)
 {
-	uint8_t* px = NULL;
 	GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
 	GX2Texture* tex = (GX2Texture*) natras->texture;
 
@@ -239,16 +235,8 @@ rasterLock(Raster *raster, int32 level, int32 lockMode)
 	case Raster::NORMAL:
 	case Raster::TEXTURE:
 	// case Raster::CAMERATEXTURE:
-		px = (uint8*) rwMalloc(raster->stride * raster->height, MEMDUR_EVENT | ID_DRIVER);
-		memset(px, 0, raster->stride * raster->height);
 		assert(raster->pixels == nil);
-		raster->pixels = px;
-
-		if(lockMode & Raster::LOCKREAD || !(lockMode & Raster::LOCKNOFETCH))
-		{
-			memcpy(px, tex->surface.image, tex->surface.imageSize);
-		}
-
+		raster->pixels = (uint8*) GX2RLockSurfaceEx(&tex->surface, level, (GX2RResourceFlags) 0);
 		raster->privateFlags = lockMode;
 		break;
 
@@ -258,7 +246,7 @@ rasterLock(Raster *raster, int32 level, int32 lockMode)
 		return nil;
 	}
 
-	return px;
+	return raster->pixels;
 }
 
 void
@@ -267,15 +255,8 @@ rasterUnlock(Raster *raster, int32 level)
 	GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
 	GX2Texture* tex = (GX2Texture*) natras->texture;
 
-	assert(raster->pixels);
+	GX2RUnlockSurfaceEx(&tex->surface, level, (GX2RResourceFlags) 0);
 
-	if(raster->privateFlags & Raster::LOCKWRITE)
-	{
-		memcpy(tex->surface.image, raster->pixels, tex->surface.imageSize);
-		GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, tex->surface.image, tex->surface.imageSize);
-	}
-
-	rwFree(raster->pixels);
 	raster->pixels = nil;
 	raster->privateFlags = 0;
 }
@@ -556,7 +537,7 @@ destroyNativeRaster(void *object, int32 offset, int32)
 	case Raster::TEXTURE:
 		if (natras->texture)
 		{
-			free(((GX2Texture*)natras->texture)->surface.image);
+			GX2RDestroySurfaceEx(&((GX2Texture*)natras->texture)->surface, (GX2RResourceFlags) 0);
 			free(natras->texture);
 		}
 		free(natras->sampler);
