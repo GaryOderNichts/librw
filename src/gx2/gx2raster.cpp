@@ -94,7 +94,54 @@ rasterCreateCameraTexture(Raster *raster)
 		return nil;
 	}
 
-	WHBLogPrintf("rasterCreateCameraTexture not implemented");
+	GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
+
+	natras->texture = calloc(1, sizeof(GX2Texture));
+
+	GX2Texture* tex = (GX2Texture*) natras->texture;
+	memset(tex, 0, sizeof(GX2Texture));
+	tex->surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+	tex->surface.use = GX2_SURFACE_USE_TEXTURE;
+	tex->surface.width = raster->width;
+	tex->surface.height = raster->height;
+	tex->surface.depth = 1;
+	tex->surface.mipLevels = 1;
+	tex->surface.aa = GX2_AA_MODE1X;
+	tex->surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+	tex->viewNumMips = 1;
+	tex->viewNumSlices = 1;
+	tex->compMap = 0x00010203;
+
+	switch(raster->format & 0xF00){
+	case Raster::C888:
+	case Raster::C8888:
+		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
+		natras->hasAlpha = true;
+		natras->bpp = 4;
+		raster->depth = 32;
+		break;
+	case Raster::C1555:
+		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R5_G5_B5_A1;
+		natras->hasAlpha = true;
+		natras->bpp = 2;
+		raster->depth = 16;
+		break;
+	default:
+		RWERROR((ERR_INVRASTER));
+		return nil;
+	}
+
+	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
+	GX2InitTextureRegs(tex);
+
+	raster->stride = tex->surface.width * natras->bpp;
+
+	natras->addressU = 0;
+	natras->addressV = 0;
+
+	natras->sampler = (GX2Sampler*) calloc(1, sizeof(GX2Sampler));
+	GX2InitSampler(natras->sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
+
 	return raster;
 }
 
@@ -234,7 +281,7 @@ rasterLock(Raster *raster, int32 level, int32 lockMode)
 	{
 	case Raster::NORMAL:
 	case Raster::TEXTURE:
-	// case Raster::CAMERATEXTURE:
+	case Raster::CAMERATEXTURE:
 		assert(raster->pixels == nil);
 		raster->pixels = (uint8*) GX2RLockSurfaceEx(&tex->surface, level, (GX2RResourceFlags) 0);
 		raster->privateFlags = lockMode;
@@ -543,6 +590,12 @@ destroyNativeRaster(void *object, int32 offset, int32)
 		free(natras->sampler);
 		break;
 	case Raster::CAMERATEXTURE:
+		if (natras->texture)
+		{
+			GX2RDestroySurfaceEx(&((GX2Texture*)natras->texture)->surface, (GX2RResourceFlags) 0);
+			free(natras->texture);
+		}
+		free(natras->sampler);
 		break;
 	case Raster::ZBUFFER:
 		if (natras->texture)

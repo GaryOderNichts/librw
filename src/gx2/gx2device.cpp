@@ -447,19 +447,15 @@ setRasterStageOnly(uint32 stage, Raster *raster)
 		if(raster)
 		{
 			assert(raster->platform == PLATFORM_GX2);
-			// TODO support cameratexture
-			if (raster->type == Raster::NORMAL || raster->type == Raster::TEXTURE)
-			{
-				GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
-				GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
-				GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
+			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
+			GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
+			GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
 
-				rwStateCache.texstage[stage].filter = (rw::Texture::FilterMode)natras->filterMode;
-				rwStateCache.texstage[stage].addressingU = (rw::Texture::Addressing)natras->addressU;
-				rwStateCache.texstage[stage].addressingV = (rw::Texture::Addressing)natras->addressV;
+			rwStateCache.texstage[stage].filter = (rw::Texture::FilterMode)natras->filterMode;
+			rwStateCache.texstage[stage].addressingU = (rw::Texture::Addressing)natras->addressU;
+			rwStateCache.texstage[stage].addressingV = (rw::Texture::Addressing)natras->addressV;
 
-				alpha = natras->hasAlpha;
-			}
+			alpha = natras->hasAlpha;
 		}
 		else
 		{
@@ -493,28 +489,24 @@ setRasterStage(uint32 stage, Raster *raster)
 		if(raster)
 		{
 			assert(raster->platform == PLATFORM_GX2);
-			// TODO support cameratexture
-			if (raster->type == Raster::NORMAL || raster->type == Raster::TEXTURE)
+			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
+			GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
+			GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
+			uint32 filter = rwStateCache.texstage[stage].filter;
+			uint32 addrU = rwStateCache.texstage[stage].addressingU;
+			uint32 addrV = rwStateCache.texstage[stage].addressingV;
+			if(natras->filterMode != filter)
 			{
-				GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
-				GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
-				GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
-				uint32 filter = rwStateCache.texstage[stage].filter;
-				uint32 addrU = rwStateCache.texstage[stage].addressingU;
-				uint32 addrV = rwStateCache.texstage[stage].addressingV;
-				if(natras->filterMode != filter)
-				{
-					GX2InitSamplerXYFilter(natras->sampler, filterConvMap_NoMIP[filter], filterConvMap_NoMIP[filter], GX2_TEX_ANISO_RATIO_NONE);
-					natras->filterMode = filter;
-				}
-				if(natras->addressU != addrU || natras->addressV != addrV)
-				{
-					GX2InitSamplerClamping(natras->sampler, addressConvMap[addrU], addressConvMap[addrV], GX2_TEX_CLAMP_MODE_WRAP);
-					natras->addressU = addrU;
-					natras->addressV = addrV;
-				}
-				alpha = natras->hasAlpha;
+				GX2InitSamplerXYFilter(natras->sampler, filterConvMap_NoMIP[filter], filterConvMap_NoMIP[filter], GX2_TEX_ANISO_RATIO_NONE);
+				natras->filterMode = filter;
 			}
+			if(natras->addressU != addrU || natras->addressV != addrV)
+			{
+				GX2InitSamplerClamping(natras->sampler, addressConvMap[addrU], addressConvMap[addrV], GX2_TEX_CLAMP_MODE_WRAP);
+				natras->addressU = addrU;
+				natras->addressV = addrV;
+			}
+			alpha = natras->hasAlpha;
 		}else
 		{
 			GX2SetPixelTexture(&whitetex, currentShader->samplerLocation);

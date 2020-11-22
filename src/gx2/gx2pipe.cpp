@@ -82,6 +82,8 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 	}
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, header->indexBuffer, header->totalNumIndex * 2);
 
+	header->vertexBuffer = nil;
+
 	return header;
 }
 
