@@ -35,21 +35,21 @@ void registerPlatformPlugins(void);
 
 extern Device renderdevice;
 
+struct AttribDesc
+{
+	uint32 index;
+	int32  size;
+	uint32 stride;
+	uint32 offset;
+};
+
 enum AttribIndices
 {
 	ATTRIB_POS = 0,
-	ATTRIB_NORMAL,
+	// ATTRIB_NORMAL,
 	ATTRIB_COLOR,
 	ATTRIB_TEXCOORDS0,
-	ATTRIB_TEXCOORDS1,
-	ATTRIB_TEXCOORDS2,
-	ATTRIB_TEXCOORDS3,
-	ATTRIB_TEXCOORDS4,
-	ATTRIB_TEXCOORDS5,
-	ATTRIB_TEXCOORDS6,
-	ATTRIB_TEXCOORDS7,
-	ATTRIB_WEIGHTS,
-	ATTRIB_INDICES
+	//ATTRIB_TEXCOORDS1,
 };
 
 // default uniform indices
@@ -63,8 +63,7 @@ struct InstanceData
 	uint32    numVertices;
 	Material *material;
 	bool32    vertexAlpha;
-	uint32    baseIndex;
-	uint32    startIndex;
+	uint32    offset;
 };
 
 struct InstanceDataHeader : rw::InstanceDataHeader
@@ -76,6 +75,8 @@ struct InstanceDataHeader : rw::InstanceDataHeader
 	float* vertexBuffer;
 	uint32  totalNumIndex;
 	uint32  totalNumVertex;
+	uint32  numAttribs;
+	AttribDesc* attribDesc;
 
 	InstanceData *inst;
 };

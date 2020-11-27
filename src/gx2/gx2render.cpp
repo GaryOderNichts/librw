@@ -25,7 +25,7 @@ void
 drawInst_simple(InstanceDataHeader *header, InstanceData *inst)
 {
 	flushCache();
-	GX2DrawIndexedEx(header->primType, inst->numIndex, GX2_INDEX_TYPE_U16, header->indexBuffer, inst->startIndex, 1);
+	GX2DrawIndexedImmediateEx(header->primType, inst->numIndex, GX2_INDEX_TYPE_U16, ((uint8*)header->indexBuffer)+inst->offset, 0, 1);
 }
 
 void
@@ -102,10 +102,8 @@ defaultRenderCB(Atomic *atomic, InstanceDataHeader *header)
 	setWorldMatrix(atomic->getFrame()->getLTM());
 	lightingCB(atomic);
 
-	// uint32 stride = 3 + 3 + 4 + 2;
-	uint32 stride = 3 + 4 + 2;
-	uint32 bufSize = stride * sizeof(float) * header->totalNumVertex;
-	GX2SetAttribBuffer(0, bufSize, stride * sizeof(float), header->vertexBuffer);
+	uint32 stride = header->attribDesc[0].stride;
+	GX2SetAttribBuffer(0, header->totalNumVertex*stride, stride, header->vertexBuffer);
 
 	InstanceData *inst = header->inst;
 	int32 n = header->numMeshes;

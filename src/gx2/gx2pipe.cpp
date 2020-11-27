@@ -32,6 +32,7 @@ freeInstanceData(Geometry *geometry)
 	free(header->indexBuffer);
 	free(header->vertexBuffer);
 	rwFree(header->inst);
+	rwFree(header->attribDesc);
 	rwFree(header);
 }
 
@@ -52,7 +53,7 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 
 	header->serialNumber = meshh->serialNum;
 	header->numMeshes = meshh->numMeshes;
-	header->primType = meshh->flags == 1 ? GX2_PRIMITIVE_MODE_LINE_STRIP : GX2_PRIMITIVE_MODE_TRIANGLES;
+	header->primType = meshh->flags == 1 ? GX2_PRIMITIVE_MODE_TRIANGLE_STRIP : GX2_PRIMITIVE_MODE_TRIANGLES;
 	header->totalNumVertex = geo->numVertices;
 	header->totalNumIndex = meshh->totalIndices;
 	header->inst = rwNewT(InstanceData, header->numMeshes, MEMDUR_EVENT | ID_GEOMETRY);
@@ -62,27 +63,26 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 	uint16* indices = header->indexBuffer;
 	InstanceData *inst = header->inst;
 	Mesh *mesh = meshh->getMeshes();
-	uint32 startindex = 0;
+	uint32 offset = 0;
 	for(uint32 i = 0; i < header->numMeshes; i++){
 		findMinVertAndNumVertices(mesh->indices, mesh->numIndices,
 		                          &inst->minVert, (int32*) &inst->numVertices);
+		assert(inst->minVert != 0xFFFFFFFF);
 		inst->numIndex = mesh->numIndices;
 		inst->material = mesh->material;
 		inst->vertexAlpha = 0;
-		inst->baseIndex = inst->minVert;
-		inst->startIndex = startindex;
-		if(inst->minVert == 0)
-			memcpy(&indices[inst->startIndex], mesh->indices, inst->numIndex*2);
-		else
-			for(uint32 j = 0; j < inst->numIndex; j++)
-				indices[inst->startIndex+j] = mesh->indices[j] - inst->minVert;
-		startindex += inst->numIndex;
+		inst->offset = offset;
+        memcpy((uint8*)header->indexBuffer + inst->offset,
+			mesh->indices, inst->numIndex*2);
+		offset += inst->numIndex*2;
 		mesh++;
 		inst++;
 	}
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, header->indexBuffer, header->totalNumIndex * 2);
 
 	header->vertexBuffer = nil;
+	header->numAttribs = 0;
+	header->attribDesc = nil;
 
 	return header;
 }
@@ -157,96 +157,143 @@ ObjPipeline::create(void)
 void
 defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 {
+	AttribDesc *attribs, *a;
+
 	bool isPrelit = !!(geo->flags & Geometry::PRELIT);
 	bool hasNormals = !!(geo->flags & Geometry::NORMALS);
 
-	// TODO: make all of this less hardcoded
-
-	// uint32 stride = 3 + 3 + 4 + 2;
-	uint32 stride = 3 + 4 + 2;
-	uint32 bufSize = stride * sizeof(float) * header->totalNumVertex;
-
 	if(!reinstance)
 	{
-		header->vertexBuffer = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, bufSize);
+		AttribDesc tmpAttribs[12];
+		uint32 stride;
+
+		a = tmpAttribs;
+		stride = 0;
+
+		// pos
+		a->index = ATTRIB_POS;
+		a->size = 3;
+		a->offset = stride;
+		stride += a->size*sizeof(float);
+		a++;
+
+		// normals
+		// a->index = ATTRIB_NORMAL;
+		// a->size = 3;
+		// a->offset = stride;
+		// stride += a->size*sizeof(float);
+		// a++;
+
+		// color
+		a->index = ATTRIB_COLOR;
+		a->size = 4;
+		a->offset = stride;
+		stride += a->size*sizeof(float);
+		a++;
+
+		// tex coords
+		a->index = ATTRIB_TEXCOORDS0;
+		a->size = 2;
+		a->offset = stride;
+		stride += a->size*sizeof(float);
+		a++;
+
+		header->numAttribs = a - tmpAttribs;
+		for(a = tmpAttribs; a != &tmpAttribs[header->numAttribs]; a++)
+			a->stride = stride;
+		
+		header->attribDesc = rwNewT(AttribDesc, header->numAttribs, MEMDUR_EVENT | ID_GEOMETRY);
+		memcpy(header->attribDesc, tmpAttribs, header->numAttribs*sizeof(AttribDesc));
+
+		header->vertexBuffer = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, header->totalNumVertex * stride);
 	}
+
+	attribs = header->attribDesc;
 
 	//
 	// Fill vertex buffer
 	//
 
-	float* verts = header->vertexBuffer;
-	// TODO also initialize unused attribs instead of setting everything to 0
-	memset(verts, 0, header->totalNumVertex * stride);
+	uint8* verts = (uint8*) header->vertexBuffer;
 
 	// Positions
-	if(!reinstance || geo->lockedSinceInst&Geometry::LOCKVERTICES){
-		int v = 0;
-		for (int i = 0; i < header->totalNumVertex; i++)
-		{
-			V3d vert = geo->morphTargets[0].vertices[i];
-			verts[v] = vert.x;
-			verts[v+1] = vert.y;
-			verts[v+2] = vert.z;
+	if(!reinstance || geo->lockedSinceInst&Geometry::LOCKVERTICES) {
+		for(a = attribs; a->index != ATTRIB_POS; a++);
 
-			v += stride;
-		}
+		instV3d(VERT_FLOAT3, verts + a->offset, geo->morphTargets[0].vertices,
+			header->totalNumVertex, a->stride);
 	}
 
-	// // Normals
-	// if(hasNormals && (!reinstance || geo->lockedSinceInst&Geometry::LOCKNORMALS)){
-	// 	int v = 3;
-	// 	for (int i = 0; i < header->totalNumVertex; i++)
-	// 	{
-	// 		V3d vert = geo->morphTargets[0].normals[i];
-	// 		verts[v] = vert.x;
-	// 		verts[v+1] = vert.y;
-	// 		verts[v+2] = vert.z;
+	// Normals
+	// if (!reinstance || geo->lockedSinceInst&Geometry::LOCKNORMALS) {
+	// 	if(hasNormals) {
+	// 		for(a = attribs; a->index != ATTRIB_NORMAL; a++);
 
-	// 		v += stride;
+	// 		instV3d(VERT_FLOAT3, verts + a->offset, geo->morphTargets[0].normals,
+	// 			header->totalNumVertex, a->stride);
+	// 	}
+	// 	else {
+	// 		for(a = attribs; a->index != ATTRIB_NORMAL; a++);
+
+	// 		float* f_verts = (float*)(verts + a->offset);
+	// 		for (uint32 i = 0; i < header->totalNumVertex; i++) {
+	// 			f_verts[0] = 0.0f;
+	// 			f_verts[1] = 0.0f;
+	// 			f_verts[2] = 1.0f;
+	// 			f_verts += a->stride/sizeof(float);
+	// 		}
 	// 	}
 	// }
 
 	// Prelighting
-	if(isPrelit && (!reinstance || geo->lockedSinceInst&Geometry::LOCKPRELIGHT)){
-		int n = header->numMeshes;
-		InstanceData *inst = header->inst;
-		while(n--){
-			assert(inst->minVert != 0xFFFFFFFF);
-			// TODO
-			// int v = 6;
-			int v = 3;
-			for (int i = 0; i < header->totalNumVertex; i++)
-			{
-				V3d vert = geo->morphTargets[0].normals[i];
-				verts[v] = 1.0f;
-				verts[v+1] = 1.0f;
-				verts[v+2] = 1.0f;
-				verts[v+3] = 1.0f;
+	if (!reinstance || geo->lockedSinceInst&Geometry::LOCKPRELIGHT) {
+		if(isPrelit) {
+			for(a = attribs; a->index != ATTRIB_COLOR; a++);
 
-				v += stride;
+			int n = header->numMeshes;
+			InstanceData *inst = header->inst;
+			while(n--){
+				assert(inst->minVert != 0xFFFFFFFF);
+				inst->vertexAlpha = instColorFloat(VERT_RGBA, verts + a->offset,
+					geo->colors + inst->minVert, inst->numVertices, a->stride);
+				inst++;
+			}
+		}
+		else {
+			for(a = attribs; a->index != ATTRIB_COLOR; a++);
+
+			float* f_verts = (float*)(verts + a->offset);
+			for (uint32 i = 0; i < header->totalNumVertex; i++) {
+				f_verts[0] = 0.0f;
+				f_verts[1] = 0.0f;
+				f_verts[2] = 0.0f;
+				f_verts[3] = 1.0f;
+				f_verts += a->stride/sizeof(float);
 			}
 		}
 	}
 
-	if(!reinstance || geo->lockedSinceInst&(Geometry::LOCKTEXCOORDS<<0)){
-		// TODO support all texcoord sets
-		if (geo->numTexCoordSets > 0)
-		{
-			// int v = 10;
-			int v = 7;
-			for (int i = 0; i < header->totalNumVertex; i++)
-			{
-				TexCoords coo = geo->texCoords[0][i];
-				verts[v] = coo.u;
-				verts[v+1] = coo.v;
+	// Texture coordinates
+	if(!reinstance || geo->lockedSinceInst&(Geometry::LOCKTEXCOORDS)) {
+		if (geo->numTexCoordSets > 0) {
+			for(a = attribs; a->index != ATTRIB_TEXCOORDS0; a++);
 
-				v += stride;
+			instTexCoords(VERT_FLOAT2, verts + a->offset, geo->texCoords[geo->numTexCoordSets-1],
+				header->totalNumVertex, a->stride);
+		}
+		else {
+			for(a = attribs; a->index != ATTRIB_TEXCOORDS0; a++);
+
+			float* f_verts = (float*)(verts + a->offset);
+			for (uint32 i = 0; i < header->totalNumVertex; i++) {
+				f_verts[0] = 0.0f;
+				f_verts[1] = 1.0f;
+				f_verts += a->stride/sizeof(float);
 			}
 		}
 	}
 
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, verts, bufSize);
+	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, verts, header->totalNumVertex * attribs->stride);
 }
 
 void
