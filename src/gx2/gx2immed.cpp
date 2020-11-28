@@ -54,7 +54,7 @@ openIm2D(void)
 {
 	u_xform = registerUniform("u_xform");
 
-	im2DShader = Shader::create(im2d_gsh);
+	im2DShader = Shader::create(im2d_gsh, GX2_SHADER_MODE_UNIFORM_REGISTER);
 	assert(im2DShader);
 
 	im2DShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
@@ -235,7 +235,7 @@ static int32 num3DVertices;
 void
 openIm3D(void)
 {
-	im3DShader = Shader::create(im3d_gsh);
+	im3DShader = Shader::create(im3d_gsh, GX2_SHADER_MODE_UNIFORM_REGISTER);
 	assert(im3DShader);
 
 	im3DShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);

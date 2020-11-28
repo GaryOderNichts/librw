@@ -83,6 +83,14 @@ struct InstanceDataHeader : rw::InstanceDataHeader
 
 #ifdef __WIIU__
 
+inline float _floatswap32(float f)
+{
+	uint32_t* tmp = (uint32_t*)&f;
+	uint32_t _swapval = __builtin_bswap32(*tmp);
+	float* tmp2 = (float*)&_swapval;
+	return *tmp2;
+}
+
 struct Shader;
 
 extern Shader *defaultShader;

@@ -95,6 +95,10 @@ static GX2ShaderState shaderState;
 GX2Texture whitetex;
 GX2Sampler whitesamp;
 
+/* define to use uniform blocks */
+// #define RW_GX2_USE_UBOS
+
+#ifndef RW_GX2_USE_UBOS
 // State
 int32 u_alphaRef;
 int32 u_fogData;
@@ -111,6 +115,11 @@ int32 u_lightParams;
 int32 u_lightPosition;
 int32 u_lightDirection;
 int32 u_lightColor;
+#else
+int32 ubo_state;
+int32 ubo_scene;
+int32 ubo_object;
+#endif
 
 int32 u_matColor;
 int32 u_surfProps;
@@ -861,6 +870,7 @@ flushCache(void)
 {
 	flushGX2RenderState();
 
+#ifndef RW_GX2_USE_UBOS
 	if(lastShaderUploaded != currentShader){
 		lastShaderUploaded = currentShader;
 		objectDirty = 1;
@@ -938,6 +948,39 @@ flushCache(void)
 		setUniform(u_fogColor, 4, &uniformState.fogColor);
 		uniformStateDirty[RWGX2_FOGCOLOR] = false;
 	}
+#else
+	if(objectDirty){
+		setBlock(ubo_object, sizeof(RawMatrix), &uniformObject);
+		objectDirty = 0;
+	}
+	if(sceneDirty){
+		setBlock(ubo_scene, sizeof(UniformScene), &uniformScene);
+		sceneDirty = 0;
+	}
+	if(stateDirty){
+		switch(alphaFunc){
+		case ALPHAALWAYS:
+		default:
+			uniformState.alphaRefLow = -1000.0f;
+			uniformState.alphaRefHigh = 1000.0f;
+			break;
+		case ALPHAGREATEREQUAL:
+			uniformState.alphaRefLow = alphaRef;
+			uniformState.alphaRefHigh = 1000.0f;
+			break;
+		case ALPHALESS:
+			uniformState.alphaRefLow = -1000.0f;
+			uniformState.alphaRefHigh = alphaRef;
+			break;
+		}
+		uniformState.fogDisable = rwStateCache.fogEnable ? 0.0f : 1.0f;
+		uniformState.fogStart = rwStateCache.fogStart;
+		uniformState.fogEnd = rwStateCache.fogEnd;
+		uniformState.fogRange = 1.0f/(rwStateCache.fogStart - rwStateCache.fogEnd);
+		// setBlock(ubo_state, sizeof(UniformState), &uniformState);
+		stateDirty = 0;
+	}
+#endif
 }
 
 static void
@@ -1068,6 +1111,9 @@ endUpdate(Camera *cam)
 
 	freeIm2DBuffers();
 	freeIm3DBuffers();
+#ifdef RW_GX2_USE_UBOS
+	shaders_clean();
+#endif
 }
 
 static bool32
@@ -1312,6 +1358,8 @@ void createWhiteTexture(void)
 static int
 initGX2()
 {
+	lastShaderUploaded = nil;
+#ifndef RW_GX2_USE_UBOS
 	u_alphaRef = registerUniform("u_alphaRef");
 	u_fogData = registerUniform("u_fogData");
 	u_fogColor = registerUniform("u_fogColor");
@@ -1323,9 +1371,14 @@ initGX2()
 	u_lightPosition = registerUniform("u_lightPosition");
 	u_lightDirection = registerUniform("u_lightDirection");
 	u_lightColor = registerUniform("u_lightColor");
+#else
+	ubo_scene = registerBlock("Scene");
+	ubo_object = registerBlock("Object");
+	ubo_state = registerBlock("State");
+#endif
+
 	u_matColor = registerUniform("u_matColor");
 	u_surfProps = registerUniform("u_surfProps");
-	lastShaderUploaded = nil;
 
 	createWhiteTexture();
 
@@ -1333,9 +1386,7 @@ initGX2()
 
 	#include "shaders/im3d.h"
 
-	// TODO: create and use default shader (using im3d for now)
-	//defaultShader = Shader::create(default_gsh);
-	defaultShader = Shader::create(im3d_gsh);
+	defaultShader = Shader::create(default_gsh, GX2_SHADER_MODE_UNIFORM_REGISTER);
 
 	// defaultShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
 	// defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
