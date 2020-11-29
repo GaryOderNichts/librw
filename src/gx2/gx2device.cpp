@@ -41,15 +41,8 @@ struct GX2Globals
 	GX2ContextState* contextState = NULL;
 } globals;
 
-int32   alphaFunc;
-float32 alphaRef;
-
 struct UniformState
 {
-	float32 alphaRefLow;
-	float32 alphaRefHigh;
-	int32   pad[2];
-
 	float32 fogStart;
 	float32 fogEnd;
 	float32 fogRange;
@@ -100,7 +93,6 @@ GX2Sampler whitesamp;
 
 #ifndef RW_GX2_USE_UBOS
 // State
-int32 u_alphaRef;
 int32 u_fogData;
 int32 u_fogColor;
 
@@ -145,6 +137,7 @@ struct RwStateCache {
 	bool32 vertexAlpha;
 	uint32 alphaTestEnable;
 	uint32 alphaFunc;
+	uint32 alphaRef;
 	bool32 textureAlpha;
 	bool32 blendEnable;
 	uint32 srcblend, destblend;
@@ -173,6 +166,7 @@ enum
 	RWGX2_DEPTHMASK,
 	RWGX2_CULLFRONT,
 	RWGX2_CULLBACK,
+	RWGX2_ALPHATEST,
 	RWGX2_ALPHAFUNC,
 	RWGX2_ALPHAREF,
 	RWGX2_FOG,
@@ -195,6 +189,10 @@ struct GX2State {
 
 	bool32 cullFront;
 	bool32 cullBack;
+
+	bool32 alphaTestEnable;
+	GX2CompareFunction alphaFunc;
+	uint32 alphaRef;
 };
 static GX2State curGX2State, oldGX2State;
 
@@ -229,25 +227,34 @@ setGX2RenderState(uint32 state, uint32 value)
 	case RWGX2_DEPTHMASK: curGX2State.depthMask = value; break;
 	case RWGX2_CULLFRONT: curGX2State.cullFront = value; break;
 	case RWGX2_CULLBACK: curGX2State.cullBack = value; break;
+	case RWGX2_ALPHATEST: curGX2State.alphaTestEnable = value; break;
+	case RWGX2_ALPHAFUNC: curGX2State.alphaFunc = (GX2CompareFunction) value; break;
+	case RWGX2_ALPHAREF: curGX2State.alphaRef = value; break;
 	}
 }
 
 void
 flushGX2RenderState(void)
 {
-	bool blendNeedsRefresh = false;
 	bool depthNeedsRefresh = false;
 
 	if(oldGX2State.blendEnable != curGX2State.blendEnable){
 		oldGX2State.blendEnable = curGX2State.blendEnable;
-		blendNeedsRefresh = true;
+		GX2SetColorControl(GX2_LOGIC_OP_COPY, oldGX2State.blendEnable ? 0xFF : 0, FALSE, TRUE);
 	}
 
 	if(oldGX2State.srcblend != curGX2State.srcblend ||
 	   oldGX2State.destblend != curGX2State.destblend){
 		oldGX2State.srcblend = curGX2State.srcblend;
 		oldGX2State.destblend = curGX2State.destblend;
-		blendNeedsRefresh = true;
+		GX2SetBlendControl(GX2_RENDER_TARGET_0,
+					oldGX2State.srcblend,
+					oldGX2State.destblend,
+					GX2_BLEND_COMBINE_MODE_ADD,
+					TRUE,
+					oldGX2State.srcblend,
+					oldGX2State.destblend,
+					GX2_BLEND_COMBINE_MODE_ADD);
 	}
 
 	if(oldGX2State.depthTest != curGX2State.depthTest){
@@ -270,17 +277,13 @@ flushGX2RenderState(void)
 		GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, oldGX2State.cullFront, oldGX2State.cullBack);
 	}
 
-	if (blendNeedsRefresh)
-	{
-		GX2SetBlendControl(GX2_RENDER_TARGET_0,
-					oldGX2State.blendEnable ? GX2_BLEND_MODE_SRC_ALPHA : GX2_BLEND_MODE_ONE,
-					oldGX2State.blendEnable ? GX2_BLEND_MODE_INV_SRC_ALPHA : GX2_BLEND_MODE_ZERO,
-					GX2_BLEND_COMBINE_MODE_ADD,
-					TRUE,
-					oldGX2State.srcblend,
-					oldGX2State.destblend,
-					GX2_BLEND_COMBINE_MODE_ADD);
-		GX2SetColorControl(GX2_LOGIC_OP_COPY, oldGX2State.blendEnable ? 0xFF : 0, FALSE, TRUE);
+	if (oldGX2State.alphaTestEnable != curGX2State.alphaTestEnable
+		|| oldGX2State.alphaFunc != curGX2State.alphaFunc
+		|| oldGX2State.alphaRef != curGX2State.alphaRef) {
+		oldGX2State.alphaTestEnable = curGX2State.alphaTestEnable;
+		oldGX2State.alphaFunc = curGX2State.alphaFunc;
+		oldGX2State.alphaRef = curGX2State.alphaRef;
+		GX2SetAlphaTest(oldGX2State.alphaTestEnable, oldGX2State.alphaFunc, oldGX2State.alphaRef/255.0f);
 	}
 
 	if (depthNeedsRefresh)
@@ -335,34 +338,27 @@ setDepthWrite(bool32 enable)
 	}
 }
 
-// TODO: GX2SetAlphaTest
 static void
 setAlphaTest(bool32 enable)
 {
-	uint32 shaderfunc;
 	if(rwStateCache.alphaTestEnable != enable){
 		rwStateCache.alphaTestEnable = enable;
-		shaderfunc = rwStateCache.alphaTestEnable ? rwStateCache.alphaFunc : ALPHAALWAYS;
-		if(alphaFunc != shaderfunc){
-			alphaFunc = shaderfunc;
-			uniformStateDirty[RWGX2_ALPHAFUNC] = true;
-			stateDirty = 1;
-		}
+		setGX2RenderState(RWGX2_ALPHATEST, enable);
 	}
 }
+
+static GX2CompareFunction alphafuncMap[] = {
+	GX2_COMPARE_FUNC_ALWAYS,
+	GX2_COMPARE_FUNC_GEQUAL,
+	GX2_COMPARE_FUNC_LESS
+};
 
 static void
 setAlphaTestFunction(uint32 function)
 {
-	uint32 shaderfunc;
 	if(rwStateCache.alphaFunc != function){
 		rwStateCache.alphaFunc = function;
-		shaderfunc = rwStateCache.alphaTestEnable ? rwStateCache.alphaFunc : ALPHAALWAYS;
-		if(alphaFunc != shaderfunc){
-			alphaFunc = shaderfunc;
-			uniformStateDirty[RWGX2_ALPHAFUNC] = true;
-			stateDirty = 1;
-		}
+		setGX2RenderState(RWGX2_ALPHAFUNC, alphafuncMap[function]);
 	}
 }
 
@@ -626,10 +622,9 @@ setRenderState(int32 state, void *pvalue)
 		setAlphaTestFunction(value);
 		break;
 	case ALPHATESTREF:
-		if(alphaRef != value/255.0f){
-			alphaRef = value/255.0f;
-			uniformStateDirty[RWGX2_ALPHAREF] = true;
-			stateDirty = 1;
+		if(rwStateCache.alphaRef != value){
+			rwStateCache.alphaRef = value;
+			setGX2RenderState(RWGX2_ALPHAREF, value);
 		}
 		break;
 	case GSALPHATEST:
@@ -695,7 +690,7 @@ getRenderState(int32 state)
 		val = rwStateCache.alphaFunc;
 		break;
 	case ALPHATESTREF:
-		val = (uint32)(alphaRef*255.0f);
+		val = rwStateCache.alphaRef;
 		break;
 	case GSALPHATEST:
 		val = rwStateCache.gsalpha;
@@ -713,9 +708,6 @@ getRenderState(int32 state)
 static void
 resetRenderState(void)
 {	
-	rwStateCache.alphaFunc = ALPHAGREATEREQUAL;
-	alphaFunc = 0;
-	alphaRef = 10.0f/255.0f;
 	uniformState.fogDisable = 1.0f;
 	uniformState.fogStart = 0.0f;
 	uniformState.fogEnd = 0.0f;
@@ -727,7 +719,6 @@ resetRenderState(void)
 
 	rwStateCache.vertexAlpha = 0;
 	rwStateCache.textureAlpha = 0;
-	rwStateCache.alphaTestEnable = 0;
 
 	memset(&oldGX2State, 0xFF, sizeof(oldGX2State));
 
@@ -748,6 +739,13 @@ resetRenderState(void)
 	rwStateCache.cullmode = CULLNONE;
 	setGX2RenderState(RWGX2_CULLFRONT, false);
 	setGX2RenderState(RWGX2_CULLBACK, false);
+
+	rwStateCache.alphaFunc = ALPHAGREATEREQUAL;
+	rwStateCache.alphaRef = 10;
+	rwStateCache.alphaTestEnable = false;
+	setGX2RenderState(RWGX2_ALPHATEST, false);
+	setGX2RenderState(RWGX2_ALPHAFUNC, GX2_COMPARE_FUNC_GEQUAL);
+	setGX2RenderState(RWGX2_ALPHAREF, 10);
 }
 
 void
@@ -903,32 +901,6 @@ flushCache(void)
 	uniformState.fogEnd = rwStateCache.fogEnd;
 	uniformState.fogRange = 1.0f/(rwStateCache.fogStart - rwStateCache.fogEnd);
 
-	if(uniformStateDirty[RWGX2_ALPHAFUNC] || uniformStateDirty[RWGX2_ALPHAREF]){
-		switch(alphaFunc){
-		case ALPHAALWAYS:
-		default:
-		{
-			float lalphaRef[2] = {-1000.0f, 1000.0f};
-			setUniform(u_alphaRef, 2, lalphaRef);
-		}
-			break;
-		case ALPHAGREATEREQUAL:
-		{
-			float lalphaRef[2] = {alphaRef, 1000.0f};
-			setUniform(u_alphaRef, 2, lalphaRef);
-		}
-			break;
-		case ALPHALESS:
-		{
-			float lalphaRef[2] = {-1000.0f, alphaRef};
-			setUniform(u_alphaRef, 2, lalphaRef);
-		}
-			break;
-		}
-		uniformStateDirty[RWGX2_ALPHAFUNC] = false;
-		uniformStateDirty[RWGX2_ALPHAREF] = false;
-	}
-
 	if(uniformStateDirty[RWGX2_FOG] ||
 		uniformStateDirty[RWGX2_FOGSTART] ||
 		uniformStateDirty[RWGX2_FOGEND]){
@@ -958,21 +930,6 @@ flushCache(void)
 		sceneDirty = 0;
 	}
 	if(stateDirty){
-		switch(alphaFunc){
-		case ALPHAALWAYS:
-		default:
-			uniformState.alphaRefLow = -1000.0f;
-			uniformState.alphaRefHigh = 1000.0f;
-			break;
-		case ALPHAGREATEREQUAL:
-			uniformState.alphaRefLow = alphaRef;
-			uniformState.alphaRefHigh = 1000.0f;
-			break;
-		case ALPHALESS:
-			uniformState.alphaRefLow = -1000.0f;
-			uniformState.alphaRefHigh = alphaRef;
-			break;
-		}
 		uniformState.fogDisable = rwStateCache.fogEnable ? 0.0f : 1.0f;
 		uniformState.fogStart = rwStateCache.fogStart;
 		uniformState.fogEnd = rwStateCache.fogEnd;
@@ -1360,7 +1317,6 @@ initGX2()
 {
 	lastShaderUploaded = nil;
 #ifndef RW_GX2_USE_UBOS
-	u_alphaRef = registerUniform("u_alphaRef");
 	u_fogData = registerUniform("u_fogData");
 	u_fogColor = registerUniform("u_fogColor");
 	u_proj = registerUniform("u_proj");
