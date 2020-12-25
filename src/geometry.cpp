@@ -931,7 +931,10 @@ Material::streamRead(Stream *stream)
 		RWERROR((ERR_CHUNK, "STRUCT"));
 		return nil;
 	}
-	stream->read32(&buf, sizeof(buf));
+	stream->read8(&buf, sizeof(buf));
+	memNative32(&buf.flags, 4);
+	memNative32(&buf.textured, 4);
+	memNative32(&buf.unused, 4);
 	Material *mat = Material::create();
 	if(mat == nil)
 		return nil;
