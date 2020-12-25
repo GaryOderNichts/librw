@@ -10,3 +10,5 @@ librw.VC.VC.opendb
 *.d
 *.o
 /.vscode
+*.gsh
+/src/gx2/shaders/latte-assembler
