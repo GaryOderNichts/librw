@@ -52,11 +52,17 @@ struct GlGlobals
 	GLFWwindow **pWindow;
 #endif
 	int presentWidth, presentHeight;
+	int presentOffX, presentOffY;
 
 	// for opening the window
 	int winWidth, winHeight;
 	const char *winTitle;
+	uint32 numSamples;
 } glGlobals;
+
+Gl3Caps gl3Caps;
+// terrible hack for GLES
+bool32 needToReadBackTextures;
 
 int32   alphaFunc;
 float32 alphaRef;
@@ -104,30 +110,45 @@ struct GLShaderState
 	SurfaceProperties surfProps;
 };
 
-const char *shaderDecl330 = "#version 330\n";
+const char *shaderDecl120 =
+"#version 120\n"
+"#define GL2\n"
+"#define texture texture2D\n"
+"#define VSIN(index) attribute\n"
+"#define VSOUT varying\n"
+"#define FSIN varying\n"
+"#define FRAGCOLOR(c) (gl_FragColor = c)\n";
+const char *shaderDecl330 =
+"#version 330\n"
+"#define VSIN(index) layout(location = index) in\n"
+"#define VSOUT out\n"
+"#define FSIN in\n"
+"#define FRAGCOLOR(c) (fragColor = c)\n";
 const char *shaderDecl100es =
-"#version 100\n"\
-"precision highp float;\n"\
+"#version 100\n"
+"#define GL2\n"
+"#define texture texture2D\n"
+"#define VSIN(index) attribute\n"
+"#define VSOUT varying\n"
+"#define FSIN varying\n"
+"#define FRAGCOLOR(c) (gl_FragColor = c)\n"
+"precision highp float;\n"
 "precision highp int;\n";
 const char *shaderDecl310es =
-"#version 310 es\n"\
-"precision highp float;\n"\
+"#version 310 es\n"
+"#define VSIN(index) layout(location = index) in\n"
+"#define VSOUT out\n"
+"#define FSIN in\n"
+"#define FRAGCOLOR(c) (fragColor = c)\n"
+"precision highp float;\n"
 "precision highp int;\n";
 
-#ifdef RW_GLES3
-const char *shaderDecl = shaderDecl310es;
-#elif defined RW_GLES2
-const char *shaderDecl = shaderDecl100es;
-#else
-const char *shaderDecl = shaderDecl330;
-#endif
+const char *shaderDecl;
 
 // this needs a define in the shaders as well!
 //#define RW_GL_USE_UBOS
 
-#ifndef RW_GLES2
 static GLuint vao;
-#endif
 #ifdef RW_GL_USE_UBOS
 static GLuint ubo_state, ubo_scene, ubo_object;
 #endif
@@ -189,6 +210,14 @@ struct RwStateCache {
 	uint32 zwrite;
 	uint32 ztest;
 	uint32 cullmode;
+	uint32 stencilenable;
+	uint32 stencilpass;
+	uint32 stencilfail;
+	uint32 stencilzfail;
+	uint32 stencilfunc;
+	uint32 stencilref;
+	uint32 stencilmask;
+	uint32 stencilwritemask;
 	uint32 fogEnable;
 	float32 fogStart;
 	float32 fogEnd;
@@ -212,6 +241,14 @@ enum
 	RWGL_DEPTHMASK,
 	RWGL_CULL,
 	RWGL_CULLFACE,
+	RWGL_STENCIL,
+	RWGL_STENCILFUNC,
+	RWGL_STENCILFAIL,
+	RWGL_STENCILZFAIL,
+	RWGL_STENCILPASS,
+	RWGL_STENCILREF,
+	RWGL_STENCILMASK,
+	RWGL_STENCILWRITEMASK,
 
 	// uniforms
 	RWGL_ALPHAFUNC,
@@ -236,6 +273,18 @@ struct GlState {
 
 	bool32 cullEnable;
 	uint32 cullFace;
+
+	bool32 stencilEnable;
+	// glStencilFunc
+	uint32 stencilFunc;
+	uint32 stencilRef;
+	uint32 stencilMask;
+	// glStencilOp
+	uint32 stencilPass;
+	uint32 stencilFail;
+	uint32 stencilZFail;
+	// glStencilMask
+	uint32 stencilWriteMask;
 };
 static GlState curGlState, oldGlState;
 
@@ -259,6 +308,32 @@ static uint32 blendMap[] = {
 	GL_SRC_ALPHA_SATURATE,
 };
 
+static uint32 stencilOpMap[] = {
+	GL_KEEP,	// actually invalid
+	GL_KEEP,
+	GL_ZERO,
+	GL_REPLACE,
+	GL_INCR,
+	GL_DECR,
+	GL_INVERT,
+	GL_INCR_WRAP,
+	GL_DECR_WRAP
+};
+
+static uint32 stencilFuncMap[] = {
+	GL_NEVER,	// actually invalid
+	GL_NEVER,
+	GL_LESS,
+	GL_EQUAL,
+	GL_LEQUAL,
+	GL_GREATER,
+	GL_NOTEQUAL,
+	GL_GEQUAL,
+	GL_ALWAYS
+};
+
+static float maxAnisotropy;
+
 /*
  * GL state cache
  */
@@ -275,6 +350,14 @@ setGlRenderState(uint32 state, uint32 value)
 	case RWGL_DEPTHMASK: curGlState.depthMask = value; break;
 	case RWGL_CULL: curGlState.cullEnable = value; break;
 	case RWGL_CULLFACE: curGlState.cullFace = value; break;
+	case RWGL_STENCIL: curGlState.stencilEnable = value; break;
+	case RWGL_STENCILFUNC: curGlState.stencilFunc = value; break;
+	case RWGL_STENCILFAIL: curGlState.stencilFail = value; break;
+	case RWGL_STENCILZFAIL: curGlState.stencilZFail = value; break;
+	case RWGL_STENCILPASS: curGlState.stencilPass = value; break;
+	case RWGL_STENCILREF: curGlState.stencilRef = value; break;
+	case RWGL_STENCILMASK: curGlState.stencilMask = value; break;
+	case RWGL_STENCILWRITEMASK: curGlState.stencilWriteMask = value; break;
 	}
 }
 
@@ -304,6 +387,31 @@ flushGlRenderState(void)
 	if(oldGlState.depthMask != curGlState.depthMask){
 		oldGlState.depthMask = curGlState.depthMask;
 		glDepthMask(oldGlState.depthMask);
+	}
+
+	if(oldGlState.stencilEnable != curGlState.stencilEnable){
+		oldGlState.stencilEnable = curGlState.stencilEnable;
+		(oldGlState.stencilEnable ? glEnable : glDisable)(GL_STENCIL_TEST);
+	}
+	if(oldGlState.stencilFunc != curGlState.stencilFunc ||
+	   oldGlState.stencilRef != curGlState.stencilRef ||
+	   oldGlState.stencilMask != curGlState.stencilMask){
+		oldGlState.stencilFunc = curGlState.stencilFunc;
+		oldGlState.stencilRef = curGlState.stencilRef;
+		oldGlState.stencilMask = curGlState.stencilMask;
+		glStencilFunc(oldGlState.stencilFunc, oldGlState.stencilRef, oldGlState.stencilMask);
+	}
+	if(oldGlState.stencilPass != curGlState.stencilPass ||
+	   oldGlState.stencilFail != curGlState.stencilFail ||
+	   oldGlState.stencilZFail != curGlState.stencilZFail){
+		oldGlState.stencilPass = curGlState.stencilPass;
+		oldGlState.stencilFail = curGlState.stencilFail;
+		oldGlState.stencilZFail = curGlState.stencilZFail;
+		glStencilOp(oldGlState.stencilFail, oldGlState.stencilZFail, oldGlState.stencilPass);
+	}
+	if(oldGlState.stencilWriteMask != curGlState.stencilWriteMask){
+		oldGlState.stencilWriteMask = curGlState.stencilWriteMask;
+		glStencilMask(oldGlState.stencilWriteMask);
 	}
 
 	if(oldGlState.cullEnable != curGlState.cullEnable){
@@ -427,18 +535,21 @@ bindTexture(uint32 texid)
 void
 bindFramebuffer(uint32 fbo)
 {
-	//glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	if(currentFramebuffer != fbo){
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		currentFramebuffer = fbo;
 	}
 }
 
-// TODO: support mipmaps
 static GLint filterConvMap_NoMIP[] = {
 	0, GL_NEAREST, GL_LINEAR,
 	   GL_NEAREST, GL_LINEAR,
 	   GL_NEAREST, GL_LINEAR
+};
+static GLint filterConvMap_MIP[] = {
+	0, GL_NEAREST, GL_LINEAR,
+	   GL_NEAREST_MIPMAP_NEAREST, GL_LINEAR_MIPMAP_NEAREST,
+	   GL_NEAREST_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR
 };
 
 static GLint addressConvMap[] = {
@@ -456,8 +567,13 @@ setFilterMode(uint32 stage, int32 filter)
 			Gl3Raster *natras = PLUGINOFFSET(Gl3Raster, rwStateCache.texstage[stage].raster, nativeRasterOffset);
 			if(natras->filterMode != filter){
 				setActiveTexture(stage);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterConvMap_NoMIP[filter]);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterConvMap_NoMIP[filter]);
+				if(natras->autogenMipmap || natras->numLevels > 1){
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterConvMap_MIP[filter]);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterConvMap_MIP[filter]);
+				}else{
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterConvMap_NoMIP[filter]);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterConvMap_NoMIP[filter]);
+				}
 				natras->filterMode = filter;
 			}
 		}
@@ -547,8 +663,13 @@ setRasterStage(uint32 stage, Raster *raster)
 			uint32 addrU = rwStateCache.texstage[stage].addressingU;
 			uint32 addrV = rwStateCache.texstage[stage].addressingV;
 			if(natras->filterMode != filter){
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterConvMap_NoMIP[filter]);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterConvMap_NoMIP[filter]);
+				if(natras->autogenMipmap || natras->numLevels > 1){
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterConvMap_MIP[filter]);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterConvMap_MIP[filter]);
+				}else{
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterConvMap_NoMIP[filter]);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterConvMap_NoMIP[filter]);
+				}
 				natras->filterMode = filter;
 			}
 			if(natras->addressU != addrU){
@@ -662,6 +783,55 @@ setRenderState(int32 state, void *pvalue)
 		}
 		break;
 
+	case STENCILENABLE:
+		if(rwStateCache.stencilenable != value){
+			rwStateCache.stencilenable = value;
+			setGlRenderState(RWGL_STENCIL, value);
+		}
+		break;
+	case STENCILFAIL:
+		if(rwStateCache.stencilfail != value){
+			rwStateCache.stencilfail = value;
+			setGlRenderState(RWGL_STENCILFAIL, stencilOpMap[value]);
+		}
+		break;
+	case STENCILZFAIL:
+		if(rwStateCache.stencilzfail != value){
+			rwStateCache.stencilzfail = value;
+			setGlRenderState(RWGL_STENCILZFAIL, stencilOpMap[value]);
+		}
+		break;
+	case STENCILPASS:
+		if(rwStateCache.stencilpass != value){
+			rwStateCache.stencilpass = value;
+			setGlRenderState(RWGL_STENCILPASS, stencilOpMap[value]);
+		}
+		break;
+	case STENCILFUNCTION:
+		if(rwStateCache.stencilfunc != value){
+			rwStateCache.stencilfunc = value;
+			setGlRenderState(RWGL_STENCILFUNC, stencilFuncMap[value]);
+		}
+		break;
+	case STENCILFUNCTIONREF:
+		if(rwStateCache.stencilref != value){
+			rwStateCache.stencilref = value;
+			setGlRenderState(RWGL_STENCILREF, value);
+		}
+		break;
+	case STENCILFUNCTIONMASK:
+		if(rwStateCache.stencilmask != value){
+			rwStateCache.stencilmask = value;
+			setGlRenderState(RWGL_STENCILMASK, value);
+		}
+		break;
+	case STENCILFUNCTIONWRITEMASK:
+		if(rwStateCache.stencilwritemask != value){
+			rwStateCache.stencilwritemask = value;
+			setGlRenderState(RWGL_STENCILWRITEMASK, value);
+		}
+		break;
+
 	case ALPHATESTFUNC:
 		setAlphaTestFunction(value);
 		break;
@@ -730,6 +900,31 @@ getRenderState(int32 state)
 		val = rwStateCache.cullmode;
 		break;
 
+	case STENCILENABLE:
+		val = rwStateCache.stencilenable;
+		break;
+	case STENCILFAIL:
+		val = rwStateCache.stencilfail;
+		break;
+	case STENCILZFAIL:
+		val = rwStateCache.stencilzfail;
+		break;
+	case STENCILPASS:
+		val = rwStateCache.stencilpass;
+		break;
+	case STENCILFUNCTION:
+		val = rwStateCache.stencilfunc;
+		break;
+	case STENCILFUNCTIONREF:
+		val = rwStateCache.stencilref;
+		break;
+	case STENCILFUNCTIONMASK:
+		val = rwStateCache.stencilmask;
+		break;
+	case STENCILFUNCTIONWRITEMASK:
+		val = rwStateCache.stencilwritemask;
+		break;
+
 	case ALPHATESTFUNC:
 		val = rwStateCache.alphaFunc;
 		break;
@@ -767,7 +962,7 @@ resetRenderState(void)
 	rwStateCache.textureAlpha = 0;
 	rwStateCache.alphaTestEnable = 0;
 
-	memset(&oldGlState, 0xFF, sizeof(oldGlState));
+	memset(&oldGlState, 0xFE, sizeof(oldGlState));
 
 	rwStateCache.blendEnable = 0;
 	setGlRenderState(RWGL_BLEND, false);
@@ -786,6 +981,23 @@ resetRenderState(void)
 	rwStateCache.cullmode = CULLNONE;
 	setGlRenderState(RWGL_CULL, false);
 	setGlRenderState(RWGL_CULLFACE, GL_BACK);
+
+	rwStateCache.stencilenable = 0;
+	setGlRenderState(RWGL_STENCIL, GL_FALSE);
+	rwStateCache.stencilfail = STENCILKEEP;
+	setGlRenderState(RWGL_STENCILFAIL, GL_KEEP);
+	rwStateCache.stencilzfail = STENCILKEEP;
+	setGlRenderState(RWGL_STENCILZFAIL, GL_KEEP);
+	rwStateCache.stencilpass = STENCILKEEP;
+	setGlRenderState(RWGL_STENCILPASS, GL_KEEP);
+	rwStateCache.stencilfunc = STENCILALWAYS;
+	setGlRenderState(RWGL_STENCILFUNC, GL_ALWAYS);
+	rwStateCache.stencilref = 0;
+	setGlRenderState(RWGL_STENCILREF, 0);
+	rwStateCache.stencilmask = 0xFFFFFFFF;
+	setGlRenderState(RWGL_STENCILMASK, 0xFFFFFFFF);
+	rwStateCache.stencilwritemask = 0xFFFFFFFF;
+	setGlRenderState(RWGL_STENCILWRITEMASK, 0xFFFFFFFF);
 
 	activeTexture = -1;
 	for(int i = 0; i < MAXNUMSTAGES; i++){
@@ -1037,8 +1249,8 @@ flushCache(void)
 static void
 setFrameBuffer(Camera *cam)
 {
-	Raster *fbuf = cam->frameBuffer;
-	Raster *zbuf = cam->zBuffer;
+	Raster *fbuf = cam->frameBuffer->parent;
+	Raster *zbuf = cam->zBuffer->parent;
 	assert(fbuf);
 
 	Gl3Raster *natfb = PLUGINOFFSET(Gl3Raster, fbuf, nativeRasterOffset);
@@ -1064,8 +1276,12 @@ setFrameBuffer(Camera *cam)
 			}
 			natfb->fboMate = zbuf;
 			natzb->fboMate = fbuf;
-			if(natfb->fbo)
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, natzb->texid, 0);
+			if(natfb->fbo){
+				if(gl3Caps.gles)
+					glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, natzb->texid);
+				else
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, natzb->texid, 0);
+			}
 		}
 	}else{
 		// remove z-buffer
@@ -1152,22 +1368,43 @@ beginUpdate(Camera *cam)
 	setFrameBuffer(cam);
 
 	int w, h;
-	if(cam->frameBuffer->type == Raster::CAMERA){
+	int x, y;
+	Raster *fb = cam->frameBuffer->parent;
+	if(fb->type == Raster::CAMERA){
 #ifdef LIBRW_SDL2
 		SDL_GetWindowSize(glGlobals.window, &w, &h);
 #else
 		glfwGetWindowSize(glGlobals.window, &w, &h);
 #endif
 	}else{
+		w = fb->width;
+		h = fb->height;
+	}
+	x = 0;
+	y = 0;
+
+	// Got a subraster
+	if(cam->frameBuffer != fb){
+		x = cam->frameBuffer->offsetX;
+		// GL y offset is from bottom
+		y = h - cam->frameBuffer->height - cam->frameBuffer->offsetY;
 		w = cam->frameBuffer->width;
 		h = cam->frameBuffer->height;
 	}
 
-	if(w != glGlobals.presentWidth || h != glGlobals.presentHeight){
-		glViewport(0, 0, w, h);
+	if(w != glGlobals.presentWidth || h != glGlobals.presentHeight ||
+	   x != glGlobals.presentOffX || y != glGlobals.presentOffY){
+		glViewport(x, y, w, h);
 		glGlobals.presentWidth = w;
 		glGlobals.presentHeight = h;
+		glGlobals.presentOffX = x;
+		glGlobals.presentOffY = y;
 	}
+}
+
+static void
+endUpdate(Camera *cam)
+{
 }
 
 static void
@@ -1185,6 +1422,8 @@ clearCamera(Camera *cam, RGBA *col, uint32 mode)
 		mask |= GL_COLOR_BUFFER_BIT;
 	if(mode & Camera::CLEARZ)
 		mask |= GL_DEPTH_BUFFER_BIT;
+	if(mode & Camera::CLEARSTENCIL)
+		mask |= GL_STENCIL_BUFFER_BIT;
 	glDepthMask(GL_TRUE);
 	glClear(mask);
 	glDepthMask(rwStateCache.zwrite);
@@ -1358,27 +1597,13 @@ openGLFW(EngineOpenParams *openparams)
 	glGlobals.winTitle = openparams->windowtitle;
 	glGlobals.pWindow = openparams->window;
 
+	memset(&gl3Caps, 0, sizeof(gl3Caps));
+
 	/* Init GLFW */
 	if(!glfwInit()){
 		RWERROR((ERR_GENERAL, "glfwInit() failed"));
 		return 0;
 	}
-	glfwWindowHint(GLFW_SAMPLES, 0);
-#ifdef RW_GLES3
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-#elif defined RW_GLES2
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-#else
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#endif
 
 	glGlobals.monitor = glfwGetMonitors(&glGlobals.numMonitors)[0];
 
@@ -1400,6 +1625,17 @@ glfwerr(int error, const char *desc)
 	fprintf(stderr, "GLFW Error: %s\n", desc);
 }
 
+static struct {
+	int gl;
+	int major, minor;
+} profiles[] = {
+	{ GLFW_OPENGL_API, 3, 3 },
+	{ GLFW_OPENGL_API, 2, 1 },
+	{ GLFW_OPENGL_ES_API, 3, 1 },
+	{ GLFW_OPENGL_ES_API, 2, 0 },
+	{ 0, 0, 0 },
+};
+
 static int
 startGLFW(void)
 {
@@ -1414,17 +1650,30 @@ startGLFW(void)
 	glfwWindowHint(GLFW_GREEN_BITS, mode->mode.greenBits);
 	glfwWindowHint(GLFW_BLUE_BITS, mode->mode.blueBits);
 	glfwWindowHint(GLFW_REFRESH_RATE, mode->mode.refreshRate);
+	glfwWindowHint(GLFW_SAMPLES, glGlobals.numSamples);
 
-	if(mode->flags & VIDEOMODEEXCLUSIVE)
-		win = glfwCreateWindow(mode->mode.width, mode->mode.height, glGlobals.winTitle, glGlobals.monitor, nil);
-	else
-		win = glfwCreateWindow(glGlobals.winWidth, glGlobals.winHeight, glGlobals.winTitle, nil, nil);
+	int i;
+	for(i = 0; profiles[i].gl; i++){
+		glfwWindowHint(GLFW_CLIENT_API, profiles[i].gl);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, profiles[i].major);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, profiles[i].minor);
+
+		if(mode->flags & VIDEOMODEEXCLUSIVE)
+			win = glfwCreateWindow(mode->mode.width, mode->mode.height, glGlobals.winTitle, glGlobals.monitor, nil);
+		else
+			win = glfwCreateWindow(glGlobals.winWidth, glGlobals.winHeight, glGlobals.winTitle, nil, nil);
+		if(win){
+			gl3Caps.gles = profiles[i].gl == GLFW_OPENGL_ES_API;
+			gl3Caps.glversion = profiles[i].major*10 + profiles[i].minor;
+			break;
+		}
+	}
 	if(win == nil){
 		RWERROR((ERR_GENERAL, "glfwCreateWindow() failed"));
 		return 0;
 	}
 	glfwMakeContextCurrent(win);
-printf("version %s\n", glGetString(GL_VERSION));
+	printf("OpenGL version: %s\n", glGetString(GL_VERSION));
 
 	/* Init GLEW */
 	glewExperimental = GL_TRUE;
@@ -1443,6 +1692,8 @@ printf("version %s\n", glGetString(GL_VERSION));
 	*glGlobals.pWindow = win;
 	glGlobals.presentWidth = 0;
 	glGlobals.presentHeight = 0;
+	glGlobals.presentOffX = 0;
+	glGlobals.presentOffY = 0;
 	return 1;
 }
 
@@ -1457,6 +1708,29 @@ stopGLFW(void)
 static int
 initOpenGL(void)
 {
+	int numExt;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &numExt);
+	for(int i = 0; i < numExt; i++){
+		const char *ext = (const char*)glGetStringi(GL_EXTENSIONS, i);
+		if(strcmp(ext, "GL_EXT_texture_compression_s3tc") == 0)
+			gl3Caps.dxtSupported = true;
+		else if(strcmp(ext, "GL_KHR_texture_compression_astc_ldr") == 0)
+			gl3Caps.astcSupported = true;
+//		printf("%d %s\n", i, ext);
+	}
+
+	if(gl3Caps.gles){
+		if(gl3Caps.glversion >= 30)
+			shaderDecl = shaderDecl310es;
+		else
+			shaderDecl = shaderDecl100es;
+	}else{
+		if(gl3Caps.glversion >= 30)
+			shaderDecl = shaderDecl330;
+		else
+			shaderDecl = shaderDecl120;
+	}
+
 #ifndef RW_GL_USE_UBOS
 	u_alphaRef = registerUniform("u_alphaRef");
 	u_fogData = registerUniform("u_fogData");
@@ -1496,10 +1770,12 @@ initOpenGL(void)
 
 	resetRenderState();
 
-#ifndef RW_GLES2
-	glGenVertexArrays(1, &vao);
-	glBindVertexArray(vao);
-#endif
+	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAnisotropy);
+
+	if(gl3Caps.glversion >= 30){
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+	}
 
 #ifdef RW_GL_USE_UBOS
 	glGenBuffers(1, &ubo_state);
@@ -1524,13 +1800,8 @@ initOpenGL(void)
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 #endif
 
-#ifdef RW_GLES2
-#include "gl2_shaders/default_vs_gl2.inc"
-#include "gl2_shaders/simple_fs_gl2.inc"
-#else
-#include "shaders/default_vs_gl3.inc"
-#include "shaders/simple_fs_gl3.inc"
-#endif
+#include "shaders/default_vs_gl.inc"
+#include "shaders/simple_fs_gl.inc"
 	const char *vs[] = { shaderDecl, header_vert_src, default_vert_src, nil };
 	const char *fs[] = { shaderDecl, header_frag_src, simple_frag_src, nil };
 	defaultShader = Shader::create(vs, fs);
@@ -1645,6 +1916,21 @@ deviceSystemGLFW(DeviceReq req, void *arg, int32 n)
 		rwmode->flags = glGlobals.modes[n].flags;
 		return 1;
 
+	case DEVICEGETMAXMULTISAMPLINGLEVELS:
+		{
+			GLint maxSamples;
+			glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
+			if(maxSamples == 0)
+				return 1;
+			return maxSamples;
+		}
+	case DEVICEGETMULTISAMPLINGLEVELS:
+		if(glGlobals.numSamples == 0)
+			return 1;
+		return glGlobals.numSamples;
+	case DEVICESETMULTISAMPLINGLEVELS:
+		glGlobals.numSamples = (uint32)n;
+		return 1;
 	default:
 		assert(0 && "not implemented");
 		return 0;
@@ -1657,7 +1943,7 @@ deviceSystemGLFW(DeviceReq req, void *arg, int32 n)
 Device renderdevice = {
 	-1.0f, 1.0f,
 	gl3::beginUpdate,
-	null::endUpdate,
+	gl3::endUpdate,
 	gl3::clearCamera,
 	gl3::showRaster,
 	gl3::rasterRenderFast,
@@ -1681,5 +1967,13 @@ Device renderdevice = {
 }
 }
 
+#else
+// urgh, probably should get rid of that eventually
+#include "rwgl3.h"
+namespace rw {
+namespace gl3 { 
+Gl3Caps gl3Caps;
+bool32 needToReadBackTextures;
+}
+}
 #endif
-

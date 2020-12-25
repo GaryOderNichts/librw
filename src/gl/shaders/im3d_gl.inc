@@ -1,11 +1,9 @@
 const char *im3d_vert_src =
-"layout(location = 0) in vec3 in_pos;\n"
-"layout(location = 2) in vec4 in_color;\n"
-"layout(location = 3) in vec2 in_tex0;\n"
+"VSIN(ATTRIB_POS)	vec3 in_pos;\n"
 
-"out vec4 v_color;\n"
-"out vec2 v_tex0;\n"
-"out float v_fog;\n"
+"VSOUT vec4 v_color;\n"
+"VSOUT vec2 v_tex0;\n"
+"VSOUT float v_fog;\n"
 
 "void\n"
 "main(void)\n"

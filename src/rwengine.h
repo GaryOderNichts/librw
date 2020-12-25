@@ -27,7 +27,13 @@ enum DeviceReq
 	DEVICEGETNUMVIDEOMODES,
 	DEVICEGETCURRENTVIDEOMODE,
 	DEVICESETVIDEOMODE,
-	DEVICEGETVIDEOMODEINFO
+	DEVICEGETVIDEOMODEINFO,
+
+	// Multisampling
+	DEVICEGETMAXMULTISAMPLINGLEVELS,
+	DEVICEGETMULTISAMPLINGLEVELS,
+	DEVICESETMULTISAMPLINGLEVELS,
+
 };
 
 typedef int DeviceSystem(DeviceReq req, void *arg, int32 n);
@@ -159,7 +165,7 @@ struct Engine
 	static MemoryFunctions memfuncs;
 	static State state;
 
-	static bool32 init(void);
+	static bool32 init(MemoryFunctions *memfuncs = nil);
 	static bool32 open(EngineOpenParams*);
 	static bool32 start(void);
 	static void term(void);
@@ -176,6 +182,9 @@ struct Engine
 	static bool32 setVideoMode(int32 mode);
 	static VideoMode *getVideoModeInfo(VideoMode *info, int32 mode);
 
+	static uint32 getMaxMultiSamplingLevels(void);
+	static uint32 getMultiSamplingLevels(void);
+	static bool32 setMultiSamplingLevels(uint32 levels);
 
 	static PluginList s_plglist;
 	static int32 registerPlugin(int32 size, uint32 id,
@@ -206,6 +215,10 @@ inline void *mustrealloc_LOC(void *p, size_t sz, uint32 hint, const char *here) 
 #define rwNewT(t, s, h) (t*)rw::mustmalloc_LOC((s)*sizeof(t),h,RWHERE)
 #define rwResize(p, s, h) rw::mustrealloc_LOC(p,s,h,RWHERE)
 #define rwResizeT(t, p, s, h) (t*)rw::mustrealloc_LOC(p,(s)*sizeof(t),h,RWHERE)
+
+extern MemoryFunctions defaultMemfuncs;
+extern MemoryFunctions managedMemfuncs;
+void printleaks(void);	// when using managed mem funcs
 
 namespace null {
 	void beginUpdate(Camera*);

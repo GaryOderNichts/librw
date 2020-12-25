@@ -77,6 +77,14 @@ struct RwStateCache {
 	uint32 fogenable;
 	RGBA fogcolor;
 	uint32 cullmode;
+	uint32 stencilenable;
+	uint32 stencilpass;
+	uint32 stencilfail;
+	uint32 stencilzfail;
+	uint32 stencilfunc;
+	uint32 stencilref;
+	uint32 stencilmask;
+	uint32 stencilwritemask;
 	uint32 alphafunc;
 	uint32 alpharef;
 
@@ -157,6 +165,30 @@ static uint32 blendMap[] = {
 	D3DBLEND_SRCALPHASAT
 };
 
+static uint32 stencilOpMap[] = {
+	D3DSTENCILOP_KEEP,	// actually invalid
+	D3DSTENCILOP_KEEP,
+	D3DSTENCILOP_ZERO,
+	D3DSTENCILOP_REPLACE,
+	D3DSTENCILOP_INCRSAT,
+	D3DSTENCILOP_DECRSAT,
+	D3DSTENCILOP_INVERT,
+	D3DSTENCILOP_INCR,
+	D3DSTENCILOP_DECR
+};
+
+static uint32 stencilFuncMap[] = {
+	D3DCMP_NEVER,	// actually invalid
+	D3DCMP_NEVER,
+	D3DCMP_LESS,
+	D3DCMP_EQUAL,
+	D3DCMP_LESSEQUAL,
+	D3DCMP_GREATER,
+	D3DCMP_NOTEQUAL,
+	D3DCMP_GREATEREQUAL,
+	D3DCMP_ALWAYS
+};
+
 static uint32 alphafuncMap[] = {
 	D3DCMP_ALWAYS,
 	D3DCMP_GREATEREQUAL,
@@ -170,11 +202,15 @@ static uint32 cullmodeMap[] = {
 	D3DCULL_CCW
 };
 
-// TODO: support mipmaps
-static uint32 filterConvMap_NoMIP[] = {
+static uint32 filterConvMap[] = {
 	0, D3DTEXF_POINT, D3DTEXF_LINEAR,
 	   D3DTEXF_POINT, D3DTEXF_LINEAR,
 	   D3DTEXF_POINT, D3DTEXF_LINEAR
+};
+static uint32 filterConvMap_MIP[] = {
+	0, D3DTEXF_NONE, D3DTEXF_NONE,
+	   D3DTEXF_POINT, D3DTEXF_POINT,
+	   D3DTEXF_LINEAR, D3DTEXF_LINEAR
 };
 static uint32 addressConvMap[] = {
 	0, D3DTADDRESS_WRAP, D3DTADDRESS_MIRROR,
@@ -298,14 +334,15 @@ restoreD3d9Device(void)
 	for(i = 0; i < MAXNUMSTAGES; i++){
 		Raster *raster = rwStateCache.texstage[i].raster;
 		if(raster){
-			D3dRaster *d3draster = PLUGINOFFSET(D3dRaster, raster, nativeRasterOffset);
+			D3dRaster *d3draster = GETD3DRASTEREXT(raster);
 			d3ddevice->SetTexture(i, (IDirect3DTexture9*)d3draster->texture);
 		}else
 			d3ddevice->SetTexture(i, nil);
 		setSamplerState(i, D3DSAMP_ADDRESSU, addressConvMap[rwStateCache.texstage[i].addressingU]);
 		setSamplerState(i, D3DSAMP_ADDRESSV, addressConvMap[rwStateCache.texstage[i].addressingV]);
-		setSamplerState(i, D3DSAMP_MAGFILTER, filterConvMap_NoMIP[rwStateCache.texstage[i].filter]);
-		setSamplerState(i, D3DSAMP_MINFILTER, filterConvMap_NoMIP[rwStateCache.texstage[i].filter]);
+		setSamplerState(i, D3DSAMP_MAGFILTER, filterConvMap[rwStateCache.texstage[i].filter]);
+		setSamplerState(i, D3DSAMP_MINFILTER, filterConvMap[rwStateCache.texstage[i].filter]);
+		setSamplerState(i, D3DSAMP_MIPFILTER, filterConvMap_MIP[rwStateCache.texstage[i].filter]);
 	}
 	for(s = 0; s < MAXNUMSTATES; s++)
 		if(validStates[s])
@@ -325,6 +362,16 @@ restoreD3d9Device(void)
 	d3ddevice->SetIndices(deviceCache.indices);
 	for(i = 0; i < MAXNUMSTREAMS; i++)
 		d3ddevice->SetStreamSource(i, deviceCache.vertexStreams[i].buffer, deviceCache.vertexStreams[i].offset, deviceCache.vertexStreams[i].stride);
+
+	// shader constants are zero now
+	d3dShaderState.fogDirty = true;
+	d3dShaderState.matColor.red = 0;
+	d3dShaderState.matColor.green = 0;
+	d3dShaderState.matColor.blue = 0;
+	d3dShaderState.matColor.alpha = 0;
+	d3dShaderState.surfProps.ambient = 0.0f;
+	d3dShaderState.surfProps.specular = 0.0f;
+	d3dShaderState.surfProps.diffuse = 0.0f;
 }
 
 void
@@ -332,7 +379,7 @@ evictD3D9Raster(Raster *raster)
 {
 	int i;
 	// Make sure we're not still referencing this raster
-	D3dRaster *natras = PLUGINOFFSET(D3dRaster, raster, nativeRasterOffset);
+	D3dRaster *natras = GETD3DRASTEREXT(raster);
 	switch(raster->type){
 	case Raster::CAMERATEXTURE:
 		for(i = 0; i < MAXNUMRENDERTARGETS; i++)
@@ -406,7 +453,7 @@ setRasterStage(uint32 stage, Raster *raster)
 		if(raster){
 			assert(raster->platform == PLATFORM_D3D8 ||
 				raster->platform == PLATFORM_D3D9);
-			d3draster = PLUGINOFFSET(D3dRaster, raster, nativeRasterOffset);
+			d3draster = GETD3DRASTEREXT(raster);
 			d3ddevice->SetTexture(stage, (IDirect3DTexture9*)d3draster->texture);
 			alpha = d3draster->hasAlpha;
 		}else{
@@ -428,11 +475,11 @@ setRasterStage(uint32 stage, Raster *raster)
 static void
 setFilterMode(uint32 stage, int32 filter)
 {
-	// TODO: mip mapping
 	if(rwStateCache.texstage[stage].filter != (Texture::FilterMode)filter){
 		rwStateCache.texstage[stage].filter = (Texture::FilterMode)filter;
-		setSamplerState(stage, D3DSAMP_MAGFILTER, filterConvMap_NoMIP[filter]);
-		setSamplerState(stage, D3DSAMP_MINFILTER, filterConvMap_NoMIP[filter]);
+		setSamplerState(stage, D3DSAMP_MAGFILTER, filterConvMap[filter]);
+		setSamplerState(stage, D3DSAMP_MINFILTER, filterConvMap[filter]);
+		setSamplerState(stage, D3DSAMP_MIPFILTER, filterConvMap_MIP[filter]);
 	}
 }
 
@@ -517,7 +564,7 @@ setMaterial_fix(const RGBA &color, const SurfaceProperties &surfProps)
 
 
 void
-setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops)
+setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops, float extraSurfProp)
 {
 	if(!equal(d3dShaderState.matColor, color)){
 		rw::RGBAf col;
@@ -528,14 +575,16 @@ setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops)
 
 	if(d3dShaderState.surfProps.ambient != surfaceprops.ambient ||
 	   d3dShaderState.surfProps.specular != surfaceprops.specular ||
-	   d3dShaderState.surfProps.diffuse != surfaceprops.diffuse){
+	   d3dShaderState.surfProps.diffuse != surfaceprops.diffuse ||
+	   d3dShaderState.extraSurfProp != extraSurfProp){
 		float surfProps[4];
 		surfProps[0] = surfaceprops.ambient;
 		surfProps[1] = surfaceprops.specular;
 		surfProps[2] = surfaceprops.diffuse;
-		surfProps[3] = 0.0f;
+		surfProps[3] = extraSurfProp;
 		d3ddevice->SetVertexShaderConstantF(VSLOC_surfProps, surfProps, 1);
 		d3dShaderState.surfProps = surfaceprops;
+		d3dShaderState.extraSurfProp = extraSurfProp;
 	}
 }
 
@@ -608,6 +657,56 @@ setRwRenderState(int32 state, void *pvalue)
 			setRenderState(D3DRS_CULLMODE, cullmodeMap[value]);
 		}
 		break;
+
+	case STENCILENABLE:
+		if(rwStateCache.stencilenable != bval){
+			rwStateCache.stencilenable = bval;
+			setRenderState(D3DRS_STENCILENABLE, bval);
+		}
+		break;
+	case STENCILFAIL:
+		if(rwStateCache.stencilfail != value){
+			rwStateCache.stencilfail = value;
+			setRenderState(D3DRS_STENCILFAIL, stencilOpMap[value]);
+		}
+		break;
+	case STENCILZFAIL:
+		if(rwStateCache.stencilzfail != value){
+			rwStateCache.stencilzfail = value;
+			setRenderState(D3DRS_STENCILZFAIL, stencilOpMap[value]);
+		}
+		break;
+	case STENCILPASS:
+		if(rwStateCache.stencilpass != value){
+			rwStateCache.stencilpass = value;
+			setRenderState(D3DRS_STENCILPASS, stencilOpMap[value]);
+		}
+		break;
+	case STENCILFUNCTION:
+		if(rwStateCache.stencilfunc != value){
+			rwStateCache.stencilfunc = value;
+			setRenderState(D3DRS_STENCILFUNC, stencilFuncMap[value]);
+		}
+		break;
+	case STENCILFUNCTIONREF:
+		if(rwStateCache.stencilref != value){
+			rwStateCache.stencilref = value;
+			setRenderState(D3DRS_STENCILREF, value);
+		}
+		break;
+	case STENCILFUNCTIONMASK:
+		if(rwStateCache.stencilmask != value){
+			rwStateCache.stencilmask = value;
+			setRenderState(D3DRS_STENCILMASK, value);
+		}
+		break;
+	case STENCILFUNCTIONWRITEMASK:
+		if(rwStateCache.stencilwritemask != value){
+			rwStateCache.stencilwritemask = value;
+			setRenderState(D3DRS_STENCILWRITEMASK, value);
+		}
+		break;
+
 	case ALPHATESTFUNC:
 		if(rwStateCache.alphafunc != value){
 			rwStateCache.alphafunc = value;
@@ -677,6 +776,32 @@ getRwRenderState(int32 state)
 	case CULLMODE:
 		val = rwStateCache.cullmode;
 		break;
+
+	case STENCILENABLE:
+		val = rwStateCache.stencilenable;
+		break;
+	case STENCILFAIL:
+		val = rwStateCache.stencilfail;
+		break;
+	case STENCILZFAIL:
+		val = rwStateCache.stencilzfail;
+		break;
+	case STENCILPASS:
+		val = rwStateCache.stencilpass;
+		break;
+	case STENCILFUNCTION:
+		val = rwStateCache.stencilfunc;
+		break;
+	case STENCILFUNCTIONREF:
+		val = rwStateCache.stencilref;
+		break;
+	case STENCILFUNCTIONMASK:
+		val = rwStateCache.stencilmask;
+		break;
+	case STENCILFUNCTIONWRITEMASK:
+		val = rwStateCache.stencilwritemask;
+		break;
+
 	case ALPHATESTFUNC:
 		val = rwStateCache.alphafunc;
 		break;
@@ -795,7 +920,7 @@ setRenderSurfaces(Camera *cam)
 	Raster *fbuf = cam->frameBuffer;
 	assert(fbuf);
 	{
-		D3dRaster *natras = PLUGINOFFSET(D3dRaster, fbuf, nativeRasterOffset);
+		D3dRaster *natras = GETD3DRASTEREXT(fbuf);
 		assert(fbuf->type == Raster::CAMERA || fbuf->type == Raster::CAMERATEXTURE);
 		if(natras->texture == nil)
 			setRenderTarget(0, d3d9Globals.defaultRenderTarget);
@@ -810,7 +935,7 @@ setRenderSurfaces(Camera *cam)
 
 	Raster *zbuf = cam->zBuffer;
 	if(zbuf){
-		D3dRaster *natras = PLUGINOFFSET(D3dRaster, zbuf, nativeRasterOffset);
+		D3dRaster *natras = GETD3DRASTEREXT(zbuf);
 		assert(zbuf->type == Raster::ZBUFFER);
 		setDepthSurface(natras->texture);
 	}else
@@ -950,7 +1075,7 @@ releaseVidmemRasters(void)
 	D3dRaster *natras;
 	for(vmr = vidmemRasters; vmr; vmr = vmr->next){
 		raster = vmr->raster;
-		natras = PLUGINOFFSET(D3dRaster, raster, nativeRasterOffset);
+		natras = GETD3DRASTEREXT(raster);
 		switch(raster->type){
 		case Raster::CAMERATEXTURE:
 			destroyTexture(natras->texture);
@@ -976,7 +1101,7 @@ recreateVidmemRasters(void)
 	D3dRaster *natras;
 	for(vmr = vidmemRasters; vmr; vmr = vmr->next){
 		raster = vmr->raster;
-		natras = PLUGINOFFSET(D3dRaster, raster, nativeRasterOffset);
+		natras = GETD3DRASTEREXT(raster);
 		switch(raster->type){
 		case Raster::CAMERATEXTURE: {
 			int32 levels = Raster::calculateNumLevels(raster->width, raster->height);
@@ -1158,6 +1283,8 @@ clearCamera(Camera *cam, RGBA *col, uint32 mode)
 		mode |= D3DCLEAR_TARGET;
 	if(mode & Camera::CLEARZ)
 		mode |= D3DCLEAR_ZBUFFER;
+	if(mode & Camera::CLEARSTENCIL)
+		mode |= D3DCLEAR_STENCIL;
 	D3DCOLOR c = D3DCOLOR_RGBA(col->red, col->green, col->blue, col->alpha);
 
 	RECT r;
@@ -1216,8 +1343,8 @@ rasterRenderFast(Raster *raster, int32 x, int32 y)
 
 	Raster *src = raster;
 	Raster *dst = Raster::getCurrentContext();
-	D3dRaster *natdst = PLUGINOFFSET(D3dRaster, dst, nativeRasterOffset);
-	D3dRaster *natsrc = PLUGINOFFSET(D3dRaster, src, nativeRasterOffset);
+	D3dRaster *natdst = GETD3DRASTEREXT(dst);
+	D3dRaster *natsrc = GETD3DRASTEREXT(src);
 
 	switch(dst->type){
 	case Raster::CAMERATEXTURE:
@@ -1440,7 +1567,8 @@ startD3D(void)
 	d3d9Globals.present.BackBufferHeight           = height;
 	d3d9Globals.present.BackBufferFormat           = format;
 	d3d9Globals.present.BackBufferCount            = 1;
-	d3d9Globals.present.MultiSampleType            = D3DMULTISAMPLE_NONE;
+	d3d9Globals.present.MultiSampleType            = d3d9Globals.msLevel == 1 ?
+		D3DMULTISAMPLE_NONE : (D3DMULTISAMPLE_TYPE)d3d9Globals.msLevel;
 	d3d9Globals.present.MultiSampleQuality         = 0;
 	d3d9Globals.present.SwapEffect                 = D3DSWAPEFFECT_DISCARD;
 	d3d9Globals.present.hDeviceWindow              = d3d9Globals.window;
@@ -1529,6 +1657,23 @@ initD3D(void)
 	d3ddevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 0);
 	rwStateCache.vertexAlpha = 0;
 	rwStateCache.textureAlpha = 0;
+
+	rwStateCache.stencilenable = 0;
+	d3ddevice->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+	rwStateCache.stencilfail = STENCILKEEP;
+	d3ddevice->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+	rwStateCache.stencilzfail = STENCILKEEP;
+	d3ddevice->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+	rwStateCache.stencilpass = STENCILKEEP;
+	d3ddevice->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+	rwStateCache.stencilfunc = STENCILALWAYS;
+	d3ddevice->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+	rwStateCache.stencilref = 0;
+	d3ddevice->SetRenderState(D3DRS_STENCILREF, 0);
+	rwStateCache.stencilmask = 0xFFFFFFFF;
+	d3ddevice->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
+	rwStateCache.stencilwritemask = 0xFFFFFFFF;
+	d3ddevice->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
 
 	setTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
 //	setTextureStageState(0, D3DTSS_CONSTANT, 0xFFFFFFFF);
@@ -1777,6 +1922,26 @@ deviceSystem(DeviceReq req, void *arg, int32 n)
 		rwmode->height = d3d9Globals.modes[n].mode.Height;
 		rwmode->depth = findFormatDepth(d3d9Globals.modes[n].mode.Format);
 		rwmode->flags = d3d9Globals.modes[n].flags;
+		return 1;
+	case DEVICEGETMAXMULTISAMPLINGLEVELS:
+		{
+			assert(d3d9Globals.d3d9 != nil);
+			uint32 level;
+			DWORD quality;
+			for (level = D3DMULTISAMPLE_16_SAMPLES; level > D3DMULTISAMPLE_NONMASKABLE; level--) {
+				if (SUCCEEDED(d3d9Globals.d3d9->CheckDeviceMultiSampleType(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, d3d9Globals.startMode.mode.Format,
+				                                                           !(d3d9Globals.startMode.flags & VIDEOMODEEXCLUSIVE), (D3DMULTISAMPLE_TYPE)level,
+				                                                           &quality)))
+					return level;
+			}
+		}
+		return 1;
+	case DEVICEGETMULTISAMPLINGLEVELS:
+		if(d3d9Globals.msLevel == 0)
+			return 1;
+		return d3d9Globals.msLevel;
+	case DEVICESETMULTISAMPLINGLEVELS:
+		d3d9Globals.msLevel = (uint32)n;
 		return 1;
 	}
 	return 1;

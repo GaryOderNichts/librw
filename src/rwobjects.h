@@ -268,6 +268,7 @@ struct Raster
 	static Raster *getCurrentContext(void);
 	bool32 renderFast(int32 x, int32 y);
 
+	static Raster *convertTexToCurrentPlatform(Raster *ras);
 #ifndef RWPUBLIC
 	static void registerModule(void);
 #endif
@@ -337,6 +338,7 @@ void expandPal4_BE(uint8 *dst, uint32 dststride, uint8 *src, uint32 srcstride, i
 void compressPal4_BE(uint8 *dst, uint32 dststride, uint8 *src, uint32 srcstride, int32 w, int32 h);
 void copyPal8(uint8 *dst, uint32 dststride, uint8 *src, uint32 srcstride, int32 w, int32 h);
 
+void flipDXT(int32 type, uint8 *dst, uint8 *src, uint32 width, uint32 height);
 
 
 #define IGNORERASTERIMP 0
@@ -348,9 +350,9 @@ struct Texture
 	enum FilterMode {
 		NEAREST = 1,
 		LINEAR,
-		MIPNEAREST,
+		MIPNEAREST,	// one mipmap
 		MIPLINEAR,
-		LINEARMIPNEAREST,
+		LINEARMIPNEAREST,	// mipmap interpolated
 		LINEARMIPLINEAR
 	};
 	enum Addressing {
@@ -723,7 +725,7 @@ struct Camera
 	PLUGINBASE
 	enum { ID = 4 };
 	enum { PERSPECTIVE = 1, PARALLEL };
-	enum { CLEARIMAGE = 0x1, CLEARZ = 0x2};
+	enum { CLEARIMAGE = 0x1, CLEARZ = 0x2, CLEARSTENCIL = 0x4 };
 	// return value of frustumTestSphere
 	enum { SPHEREOUTSIDE, SPHEREBOUNDARY, SPHEREINSIDE };
 

@@ -1,15 +1,12 @@
 const char *matfx_env_vert_src =
 "uniform mat4 u_texMatrix;\n"
 
-"layout(location = 0) in vec3 in_pos;\n"
-"layout(location = 1) in vec3 in_normal;\n"
-"layout(location = 2) in vec4 in_color;\n"
-"layout(location = 3) in vec2 in_tex0;\n"
+"VSIN(ATTRIB_POS)	vec3 in_pos;\n"
 
-"out vec4 v_color;\n"
-"out vec2 v_tex0;\n"
-"out vec2 v_tex1;\n"
-"out float v_fog;\n"
+"VSOUT vec4 v_color;\n"
+"VSOUT vec2 v_tex0;\n"
+"VSOUT vec2 v_tex1;\n"
+"VSOUT float v_fog;\n"
 
 "void\n"
 "main(void)\n"
@@ -40,12 +37,10 @@ const char *matfx_env_frag_src =
 "#define shininess (u_fxparams.x)\n"
 "#define disableFBA (u_fxparams.y)\n"
 
-"in vec4 v_color;\n"
-"in vec2 v_tex0;\n"
-"in vec2 v_tex1;\n"
-"in float v_fog;\n"
-
-"out vec4 color;\n"
+"FSIN vec4 v_color;\n"
+"FSIN vec2 v_tex0;\n"
+"FSIN vec2 v_tex1;\n"
+"FSIN float v_fog;\n"
 
 "void\n"
 "main(void)\n"
@@ -60,9 +55,12 @@ const char *matfx_env_frag_src =
 "	pass2.rgb = mix(vec3(0.0, 0.0, 0.0), pass2.rgb, v_fog);\n"
 
 "	float fba = max(pass1.a, disableFBA);\n"
+"	vec4 color;\n"
 "	color.rgb = pass1.rgb*pass1.a + pass2.rgb*fba;\n"
 "	color.a = pass1.a;\n"
 
 "	DoAlphaTest(color.a);\n"
+
+"	FRAGCOLOR(color);\n"
 "}\n"
 ;

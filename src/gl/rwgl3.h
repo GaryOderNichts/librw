@@ -45,18 +45,16 @@ enum AttribIndices
 	ATTRIB_POS = 0,
 	ATTRIB_NORMAL,
 	ATTRIB_COLOR,
+	ATTRIB_WEIGHTS,
+	ATTRIB_INDICES,
 	ATTRIB_TEXCOORDS0,
 	ATTRIB_TEXCOORDS1,
-#ifndef RW_GLES2
 	ATTRIB_TEXCOORDS2,
 	ATTRIB_TEXCOORDS3,
 	ATTRIB_TEXCOORDS4,
 	ATTRIB_TEXCOORDS5,
 	ATTRIB_TEXCOORDS6,
 	ATTRIB_TEXCOORDS7,
-#endif
-	ATTRIB_WEIGHTS,
-	ATTRIB_INDICES
 };
 
 // default uniform indices
@@ -223,8 +221,6 @@ ObjPipeline *makeDefaultPipeline(void);
 
 // Native Texture and Raster
 
-extern int32 nativeRasterOffset;
-
 struct Gl3Raster
 {
 	// arguments to glTexImage2D
@@ -235,7 +231,10 @@ struct Gl3Raster
 	// texture object
 	uint32 texid;
 
-	bool32 hasAlpha;
+	bool isCompressed;
+	bool hasAlpha;
+	bool autogenMipmap;
+	int8 numLevels;
 	// cached filtermode and addressing
 	uint8 filterMode;
 	uint8 addressU;
@@ -243,13 +242,31 @@ struct Gl3Raster
 
 	uint32 fbo;		// used for camera texture only!
 	Raster *fboMate;	// color or zbuffer raster mate of this one
+	RasterLevels *backingStore;	// if we can't read back GPU memory but have to
 };
+
+struct Gl3Caps
+{
+	int gles;
+	int glversion;
+	bool dxtSupported;
+	bool astcSupported;	// not used yet
+};
+extern Gl3Caps gl3Caps;
+// GLES can't read back textures very nicely.
+// In most cases that's not an issue, but when it is,
+// this has to be set before the texture is filled:
+extern bool32 needToReadBackTextures;
+
+void allocateDXT(Raster *raster, int32 dxt, int32 numLevels, bool32 hasAlpha);
 
 Texture *readNativeTexture(Stream *stream);
 void writeNativeTexture(Texture *tex, Stream *stream);
 uint32 getSizeNativeTexture(Texture *tex);
 
+extern int32 nativeRasterOffset;
 void registerNativeRaster(void);
+#define GETGL3RASTEREXT(raster) PLUGINOFFSET(Gl3Raster, raster, rw::gl3::nativeRasterOffset)
 
 }
 }

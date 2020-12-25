@@ -267,6 +267,7 @@ readSkinLegacy(Stream *stream, int32 len, void *object, int32, int32)
 	Skin *skin = rwNewT(Skin, 1, MEMDUR_EVENT | ID_SKIN);
 	*PLUGINOFFSET(Skin*, geometry, skinGlobals.geoOffset) = skin;
 	skin->init(numBones, numBones, numVertices);
+	skin->legacyType = 1;
 	skin->numWeights = 4;
 
 	stream->read8(skin->indices, numVertices*4);
@@ -306,6 +307,17 @@ readSkinLegacy(Stream *stream, int32 len, void *object, int32, int32)
 static void
 skinRights(void *object, int32, int32, uint32)
 {
+	Skin::setPipeline((Atomic*)object, 1);
+}
+
+static void
+skinAlways(void *object, int32, int32)
+{
+	Atomic *atomic = (Atomic*)object;
+	Geometry *geo = atomic->geometry;
+	if(geo == nil) return;
+	Skin *skin = Skin::get(geo);
+	if(skin == nil) return;
 	Skin::setPipeline((Atomic*)object, 1);
 }
 
@@ -376,6 +388,7 @@ registerSkinPlugin(void)
 	skinGlobals.atomicOffset = o;
 	Atomic::registerPluginStream(ID_SKIN, readSkinLegacy, nil, nil);
 	Atomic::setStreamRightsCallback(ID_SKIN, skinRights);
+	Atomic::setStreamAlwaysCallback(ID_SKIN, skinAlways);
 }
 
 void
@@ -420,6 +433,7 @@ Skin::init(int32 numBones, int32 numUsedBones, int32 numVertices)
 	this->rle = nil;
 
 	this->platformData = nil;
+	this->legacyType = 0;
 }
 
 

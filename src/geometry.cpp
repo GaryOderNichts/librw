@@ -932,9 +932,9 @@ Material::streamRead(Stream *stream)
 		return nil;
 	}
 	stream->read8(&buf, sizeof(buf));
-	memNative32(&buf.flags, 4);
-	memNative32(&buf.textured, 4);
-	memNative32(&buf.unused, 4);
+	RGBA col = buf.color;
+	memNative32(&buf, sizeof(buf));
+	buf.color = col;
 	Material *mat = Material::create();
 	if(mat == nil)
 		return nil;
@@ -976,7 +976,9 @@ Material::streamWrite(Stream *stream)
 	buf.flags = 0;
 	buf.unused = 0;
 	buf.textured = this->texture != nil;
-	stream->write32(&buf, sizeof(buf));
+	memLittle32(&buf, sizeof(buf));
+	buf.color = this->color;
+	stream->write8(&buf, sizeof(buf));
 
 	if(rw::version >= 0x30400){
 		float32 surfaceProps[3];

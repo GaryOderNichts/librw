@@ -126,6 +126,15 @@ free_managed(void *p)
 	free(mem->origPtr);
 }
 
+void
+printleaks(void)
+{
+	FORLIST(lnk, allocations){
+		MemoryBlock *mem = LLLinkGetData(lnk, MemoryBlock, inAllocList);
+		printf("sz %d hint %X\n   %s\n", mem->sz, mem->hint, mem->codeline);
+	}
+}
+
 // TODO: make the debug out configurable
 void *mustmalloc_h(size_t sz, uint32 hint)
 {
@@ -148,11 +157,25 @@ void *mustrealloc_h(void *p, size_t sz, uint32 hint)
 	return nil;
 }
 
-//#define TRACK_ALLOCATIONS
+MemoryFunctions defaultMemfuncs = {
+	malloc_h,
+	realloc_h,
+	free,
+	nil,
+	nil
+};
+
+MemoryFunctions managedMemfuncs = {
+	malloc_managed,
+	realloc_managed,
+	free_managed,
+	nil,
+	nil
+};
 
 // This function mainly registers engine plugins
 bool32
-Engine::init(void)
+Engine::init(MemoryFunctions *memfuncs)
 {
 	if(engine || Engine::state != Dead){
 		RWERROR((ERR_ENGINEINIT));
@@ -162,19 +185,15 @@ Engine::init(void)
 	totalMemoryAllocated = 0;
 	allocations.init();
 
-	// TODO: make this an argument
-#ifdef TRACK_ALLOCATIONS
-	memfuncs.rwmalloc = malloc_managed;
-	memfuncs.rwrealloc = realloc_managed;
-	memfuncs.rwfree = free_managed;
-#else
-	memfuncs.rwmalloc = malloc_h;
-	memfuncs.rwrealloc = realloc_h;
-	memfuncs.rwfree = free;
-#endif
+	if(memfuncs)
+		Engine::memfuncs = *memfuncs;
+	else
+		Engine::memfuncs = defaultMemfuncs;
 
-	memfuncs.rwmustmalloc = mustmalloc_h;
-	memfuncs.rwmustrealloc = mustrealloc_h;
+	if(Engine::memfuncs.rwmustmalloc == nil)
+		Engine::memfuncs.rwmustmalloc = mustmalloc_h;
+	if(Engine::memfuncs.rwmustrealloc == nil)
+		Engine::memfuncs.rwmustrealloc = mustrealloc_h;
 
 	PluginList::open();
 
@@ -307,13 +326,6 @@ Engine::term(void)
 	// TODO: maybe reset more stuff here?
 	d3d::nativeRasterOffset = 0;
 
-#ifdef TRACK_ALLOCATIONS
-	FORLIST(lnk, allocations){
-		MemoryBlock *mem = LLLinkGetData(lnk, MemoryBlock, inAllocList);
-		printf("sz %d hint %X\n   %s\n", mem->sz, mem->hint, mem->codeline);
-	}
-#endif
-
 	Engine::state = Dead;
 }
 
@@ -403,6 +415,25 @@ Engine::getVideoModeInfo(VideoMode *info, int32 mode)
 	if(engine->device.system(DEVICEGETVIDEOMODEINFO, info, mode))
 		return info;
 	return nil;
+}
+
+
+uint32
+Engine::getMaxMultiSamplingLevels(void)
+{
+	return engine->device.system(DEVICEGETMAXMULTISAMPLINGLEVELS, nil, 0);
+}
+
+uint32
+Engine::getMultiSamplingLevels(void)
+{
+	return engine->device.system(DEVICEGETMULTISAMPLINGLEVELS, nil, 0);
+}
+
+bool32
+Engine::setMultiSamplingLevels(uint32 levels)
+{
+	return engine->device.system(DEVICESETMULTISAMPLINGLEVELS, nil, levels);
 }
 
 

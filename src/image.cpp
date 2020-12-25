@@ -163,8 +163,8 @@ decompressDXT1(uint8 *adst, int32 w, int32 h, uint8 *src)
 		}
 
 		/* write bytes */
-		for(uint32 k = 0; k < 4; k++)
-			for(uint32 l = 0; l < 4; l++){
+		for(uint32 l = 0; l < 4; l++)
+			for(uint32 k = 0; k < 4; k++){
 				dst[(y+l)*w + x+k][0] = c[idx[l*4+k]][0];
 				dst[(y+l)*w + x+k][1] = c[idx[l*4+k]][1];
 				dst[(y+l)*w + x+k][2] = c[idx[l*4+k]][2];
@@ -221,8 +221,8 @@ decompressDXT3(uint8 *adst, int32 w, int32 h, uint8 *src)
 		}
 
 		/* write bytes */
-		for(uint32 k = 0; k < 4; k++)
-			for(uint32 l = 0; l < 4; l++){
+		for(uint32 l = 0; l < 4; l++)
+			for(uint32 k = 0; k < 4; k++){
 				dst[(y+l)*w + x+k][0] = c[idx[l*4+k]][0];
 				dst[(y+l)*w + x+k][1] = c[idx[l*4+k]][1];
 				dst[(y+l)*w + x+k][2] = c[idx[l*4+k]][2];
@@ -308,8 +308,8 @@ decompressDXT5(uint8 *adst, int32 w, int32 h, uint8 *src)
 		}
 
 		/* write bytes */
-		for(uint32 k = 0; k < 4; k++)
-			for(uint32 l = 0; l < 4; l++){
+		for(uint32 l = 0; l < 4; l++)
+			for(uint32 k = 0; k < 4; k++){
 				dst[(y+l)*w + x+k][0] = c[idx[l*4+k]][0];
 				dst[(y+l)*w + x+k][1] = c[idx[l*4+k]][1];
 				dst[(y+l)*w + x+k][2] = c[idx[l*4+k]][2];
@@ -320,6 +320,226 @@ decompressDXT5(uint8 *adst, int32 w, int32 h, uint8 *src)
 			y += 4;
 			x = 0;
 		}
+	}
+}
+
+// not strictly image but related
+
+// flip a DXT 2-bit block
+static void
+flipBlock(uint8 *dst, uint8 *src)
+{
+	// color
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+	dst[3] = src[3];
+	// bits
+	dst[4] = src[7];
+	dst[5] = src[6];
+	dst[6] = src[5];
+	dst[7] = src[4];
+}
+
+// flip top 2 rows of a DXT 2-bit block
+static void
+flipBlock_half(uint8 *dst, uint8 *src)
+{
+	// color
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+	dst[3] = src[3];
+	// bits
+	dst[4] = src[5];
+	dst[5] = src[4];
+	dst[6] = src[6];
+	dst[7] = src[7];
+}
+
+// flip a DXT3 4-bit alpha block
+static void
+flipAlphaBlock3(uint8 *dst, uint8 *src)
+{
+	dst[6] = src[0];
+	dst[7] = src[1];
+	dst[4] = src[2];
+	dst[5] = src[3];
+	dst[2] = src[4];
+	dst[3] = src[5];
+	dst[0] = src[6];
+	dst[1] = src[7];
+}
+
+// flip top 2 rows of a DXT3 4-bit alpha block
+static void
+flipAlphaBlock3_half(uint8 *dst, uint8 *src)
+{
+	dst[0] = src[2];
+	dst[1] = src[3];
+	dst[2] = src[0];
+	dst[3] = src[1];
+	dst[4] = src[4];
+	dst[5] = src[5];
+	dst[6] = src[6];
+	dst[7] = src[7];
+}
+
+// flip a DXT5 3-bit alpha block
+static void
+flipAlphaBlock5(uint8 *dst, uint8 *src)
+{
+	// color
+	dst[0] = src[0];
+	dst[1] = src[1];
+	// bits
+	uint64 bits = *(uint64*)&src[2];
+	uint64 flipbits = 0;
+	for(int i = 0; i < 4; i++){
+		flipbits <<= 12;
+		flipbits |= bits & 0xFFF;
+		bits >>= 12;
+	}
+	memcpy(dst+2, &flipbits, 6);
+}
+
+// flip top 2 rows of a DXT5 3-bit alpha block
+static void
+flipAlphaBlock5_half(uint8 *dst, uint8 *src)
+{
+	// color
+	dst[0] = src[0];
+	dst[1] = src[1];
+	// bits
+	uint64 bits = *(uint64*)&src[2];
+	uint64 flipbits = bits & 0xFFFFFF000000;
+	flipbits |= (bits>>12) & 0xFFF;
+	flipbits |= (bits<<12) & 0xFFF000;
+	memcpy(dst+2, &flipbits, 6);
+}
+
+void
+flipDXT1(uint8 *dst, uint8 *src, uint32 width, uint32 height)
+{
+	int x, y;
+	int bw = (width+3)/4;
+	int bh = (height+3)/4;
+	if(height < 4){
+		// used pixels are always at the top
+		// so don't swap the full 4 rows
+		if(height == 2){
+			uint8 *s = src;
+			uint8 *d = dst;
+			for(x = 0; x < bw; x++){
+				flipBlock_half(dst, src);
+				s += 8;
+				d += 8;
+			}
+		}else
+			memcpy(dst, src, 8*bw);
+		return;
+	}
+	dst += 8*bw*bh;
+	for(y = 0; y < bh; y++){
+		dst -= 8*bw;
+		uint8 *s = src;
+		uint8 *d = dst;
+		for(x = 0; x < bw; x++){
+			flipBlock(d, s);
+			s += 8;
+			d += 8;
+		}
+		src += 8*bw;
+	}
+}
+
+void
+flipDXT3(uint8 *dst, uint8 *src, uint32 width, uint32 height)
+{
+	int x, y;
+	int bw = (width+3)/4;
+	int bh = (height+3)/4;
+	if(height < 4){
+		// used pixels are always at the top
+		// so don't swap the full 4 rows
+		if(height == 2){
+			uint8 *s = src;
+			uint8 *d = dst;
+			for(x = 0; x < bw; x++){
+				flipAlphaBlock3_half(d, s);
+				flipBlock_half(d+8, s+8);
+				s += 16;
+				d += 16;
+			}
+		}else
+			memcpy(dst, src, 16*bw);
+		return;
+	}
+	dst += 16*bw*bh;
+	for(y = 0; y < bh; y++){
+		dst -= 16*bw;
+		uint8 *s = src;
+		uint8 *d = dst;
+		for(x = 0; x < bw; x++){
+			flipAlphaBlock3(d, s);
+			flipBlock(d+8, s+8);
+			s += 16;
+			d += 16;
+		}
+		src += 16*bw;
+	}
+}
+
+void
+flipDXT5(uint8 *dst, uint8 *src, uint32 width, uint32 height)
+{
+	int x, y;
+	int bw = (width+3)/4;
+	int bh = (height+3)/4;
+	if(height < 4){
+		// used pixels are always at the top
+		// so don't swap the full 4 rows
+		if(height == 2){
+			uint8 *s = src;
+			uint8 *d = dst;
+			for(x = 0; x < bw; x++){
+				flipAlphaBlock5_half(d, s);
+				flipBlock_half(d+8, s+8);
+				s += 16;
+				d += 16;
+			}
+		}else
+			memcpy(dst, src, 16*bw);
+		return;
+	}
+	dst += 16*bw*bh;
+	for(y = 0; y < bh; y++){
+		dst -= 16*bw;
+		uint8 *s = src;
+		uint8 *d = dst;
+		for(x = 0; x < bw; x++){
+			flipAlphaBlock5(d, s);
+			flipBlock(d+8, s+8);
+			s += 16;
+			d += 16;
+		}
+		src += 16*bw;
+	}
+}
+
+void
+flipDXT(int32 type, uint8 *dst, uint8 *src, uint32 width, uint32 height)
+{
+	switch(type){
+	case 1:
+		flipDXT1(dst, src, width, height);
+		break;
+	case 3:
+		flipDXT3(dst, src, width, height);
+		break;
+	case 5:
+		flipDXT5(dst, src, width, height);
+		break;
 	}
 }
 
