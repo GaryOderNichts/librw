@@ -50,22 +50,11 @@ rasterCreateTexture(Raster *raster)
 	switch(raster->format & 0xF00){
 	case Raster::C888:
 	case Raster::C8888:
+	case Raster::C1555:
 		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
 		natras->hasAlpha = true;
 		natras->bpp = 4;
 		raster->depth = 32;
-		break;
-	// case Raster::C888:
-	// 	tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8;
-	// 	natras->hasAlpha = true;
-	// 	natras->bpp = 3;
-	// 	raster->depth = 24;
-	// 	break;
-	case Raster::C1555:
-		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R5_G5_B5_A1;
-		natras->hasAlpha = true;
-		natras->bpp = 2;
-		raster->depth = 16;
 		break;
 	default:
 		RWERROR((ERR_INVRASTER));
@@ -75,7 +64,7 @@ rasterCreateTexture(Raster *raster)
 	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
 	GX2InitTextureRegs(tex);
 
-	raster->stride = tex->surface.width * natras->bpp;
+	raster->stride = tex->surface.pitch * natras->bpp;
 
 	natras->addressU = 0;
 	natras->addressV = 0;
@@ -115,16 +104,11 @@ rasterCreateCameraTexture(Raster *raster)
 	switch(raster->format & 0xF00){
 	case Raster::C888:
 	case Raster::C8888:
+	case Raster::C1555:
 		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
 		natras->hasAlpha = true;
 		natras->bpp = 4;
 		raster->depth = 32;
-		break;
-	case Raster::C1555:
-		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R5_G5_B5_A1;
-		natras->hasAlpha = true;
-		natras->bpp = 2;
-		raster->depth = 16;
 		break;
 	default:
 		RWERROR((ERR_INVRASTER));
@@ -134,7 +118,7 @@ rasterCreateCameraTexture(Raster *raster)
 	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
 	GX2InitTextureRegs(tex);
 
-	raster->stride = tex->surface.width * natras->bpp;
+	raster->stride = tex->surface.pitch * natras->bpp;
 
 	natras->addressU = 0;
 	natras->addressV = 0;
@@ -174,7 +158,7 @@ rasterCreateCamera(Raster *raster)
 
 	GfxInitColorBuffer(colorBuffer, raster->width, raster->height, GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8, GX2_AA_MODE1X);
 
-	raster->stride = raster->width * natras->bpp;
+	raster->stride = colorBuffer->surface.pitch * natras->bpp;
 
 	colorBuffer->surface.image = GfxHeapAllocMEM1(colorBuffer->surface.imageSize, colorBuffer->surface.alignment);
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, colorBuffer->surface.image, colorBuffer->surface.imageSize);
@@ -391,7 +375,6 @@ rasterFromImage(Raster *raster, Image *image)
 		}
 		else if(raster->format == Raster::C888)
 		{
-			// conv = conv_RGB888_from_RGB888;
 			conv = conv_RGBA8888_from_RGB888;
 		}
 		else
@@ -404,7 +387,6 @@ rasterFromImage(Raster *raster, Image *image)
 		}
 		else if(raster->format == Raster::C888)
 		{
-			// conv = conv_RGB888_from_RGB888;
 			conv = conv_RGBA8888_from_RGB888;
 		}
 		else
@@ -412,7 +394,7 @@ rasterFromImage(Raster *raster, Image *image)
 		break;
 	case 16:
 		if(raster->format == Raster::C1555)
-			conv = conv_RGBA5551_from_ARGB1555;
+			conv = conv_RGBA8888_from_ARGB1555;
 		else
 			goto err;
 		break;
