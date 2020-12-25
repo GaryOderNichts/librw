@@ -19,7 +19,6 @@
 namespace rw {
 namespace gx2 {
 
-// TODO
 
 void
 drawInst_simple(InstanceDataHeader *header, InstanceData *inst)

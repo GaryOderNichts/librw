@@ -167,6 +167,8 @@ Shader::create(const void *data, GX2ShaderMode m)
 {
 	Shader *sh = rwNewT(Shader, 1, MEMDUR_EVENT | ID_DRIVER);
 	sh->mode = m;
+	sh->samplerLocation = -1;
+	sh->sampler2Location = -1;
 
 	if (!WHBGfxLoadGFDShaderGroup(&sh->group, 0, data))
 	{

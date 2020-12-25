@@ -45,9 +45,9 @@ struct Shader
 	WHBGfxShaderGroup group;
 	GX2ShaderMode mode;
 
-	uint32 samplerLocation;
+	int32 samplerLocation;
 	// if a shader has a second sampler this can be used
-	uint32 sampler2Location;
+	int32 sampler2Location;
 
 	Uniform* uniforms;
 	Uniform* blocks;

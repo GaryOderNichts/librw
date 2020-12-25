@@ -236,8 +236,6 @@ setGX2RenderState(uint32 state, uint32 value)
 void
 flushGX2RenderState(void)
 {
-	bool depthNeedsRefresh = false;
-
 	if(oldGX2State.blendEnable != curGX2State.blendEnable){
 		oldGX2State.blendEnable = curGX2State.blendEnable;
 		GX2SetColorControl(GX2_LOGIC_OP_COPY, oldGX2State.blendEnable ? 0xFF : 0, FALSE, TRUE);
@@ -257,17 +255,13 @@ flushGX2RenderState(void)
 					GX2_BLEND_COMBINE_MODE_ADD);
 	}
 
-	if(oldGX2State.depthTest != curGX2State.depthTest){
+	if(oldGX2State.depthTest != curGX2State.depthTest ||
+		oldGX2State.depthFunc != curGX2State.depthFunc ||
+		oldGX2State.depthMask != curGX2State.depthMask){
 		oldGX2State.depthTest = curGX2State.depthTest;
-		depthNeedsRefresh = true;
-	}
-	if(oldGX2State.depthFunc != curGX2State.depthFunc){
 		oldGX2State.depthFunc = curGX2State.depthFunc;
-		depthNeedsRefresh = true;
-	}
-	if(oldGX2State.depthMask != curGX2State.depthMask){
 		oldGX2State.depthMask = curGX2State.depthMask;
-		depthNeedsRefresh = true;
+		GX2SetDepthOnlyControl(oldGX2State.depthTest, oldGX2State.depthMask, oldGX2State.depthFunc);
 	}
 
 	if(oldGX2State.cullFront != curGX2State.cullFront
@@ -284,11 +278,6 @@ flushGX2RenderState(void)
 		oldGX2State.alphaFunc = curGX2State.alphaFunc;
 		oldGX2State.alphaRef = curGX2State.alphaRef;
 		GX2SetAlphaTest(oldGX2State.alphaTestEnable, oldGX2State.alphaFunc, oldGX2State.alphaRef/255.0f);
-	}
-
-	if (depthNeedsRefresh)
-	{
-		GX2SetDepthOnlyControl(oldGX2State.depthTest, oldGX2State.depthMask, oldGX2State.depthFunc);
 	}
 }
 
@@ -435,10 +424,25 @@ setAddressV(uint32 stage, int32 addressing)
 			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
 			if(natras->addressV != addressing && natras->sampler)
 			{
-				GX2InitSamplerClamping(natras->sampler, addressConvMap[natras->addressV], addressConvMap[addressing], GX2_TEX_CLAMP_MODE_WRAP);
+				GX2InitSamplerClamping(natras->sampler, addressConvMap[natras->addressU], addressConvMap[addressing], GX2_TEX_CLAMP_MODE_WRAP);
 				natras->addressV = addressing;
 			}
 		}
+	}
+}
+
+static void
+setTexAndSampler(GX2Texture* tex, GX2Sampler* samp, uint32 stage)
+{
+	if (stage == 0 && currentShader->samplerLocation != -1)
+	{
+		GX2SetPixelTexture(tex, currentShader->samplerLocation);
+		GX2SetPixelSampler(samp, currentShader->samplerLocation);
+	}
+	else if (stage == 1 && currentShader->sampler2Location != -1)
+	{
+		GX2SetPixelTexture(tex, currentShader->sampler2Location);
+		GX2SetPixelSampler(samp, currentShader->sampler2Location);
 	}
 }
 
@@ -453,8 +457,8 @@ setRasterStageOnly(uint32 stage, Raster *raster)
 		{
 			assert(raster->platform == PLATFORM_GX2);
 			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
-			GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
-			GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
+			
+			setTexAndSampler((GX2Texture*) natras->texture, natras->sampler, stage);
 
 			rwStateCache.texstage[stage].filter = (rw::Texture::FilterMode)natras->filterMode;
 			rwStateCache.texstage[stage].addressingU = (rw::Texture::Addressing)natras->addressU;
@@ -464,8 +468,7 @@ setRasterStageOnly(uint32 stage, Raster *raster)
 		}
 		else
 		{
-			GX2SetPixelTexture(&whitetex, currentShader->samplerLocation);
-			GX2SetPixelSampler(&whitesamp, currentShader->samplerLocation);
+			setTexAndSampler(&whitetex, &whitesamp, stage);
 			alpha = 0;
 		}
 
@@ -495,8 +498,9 @@ setRasterStage(uint32 stage, Raster *raster)
 		{
 			assert(raster->platform == PLATFORM_GX2);
 			GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
-			GX2SetPixelTexture((GX2Texture*) natras->texture, currentShader->samplerLocation);
-			GX2SetPixelSampler(natras->sampler, currentShader->samplerLocation);
+
+			setTexAndSampler((GX2Texture*) natras->texture, natras->sampler, stage);
+
 			uint32 filter = rwStateCache.texstage[stage].filter;
 			uint32 addrU = rwStateCache.texstage[stage].addressingU;
 			uint32 addrV = rwStateCache.texstage[stage].addressingV;
@@ -514,8 +518,7 @@ setRasterStage(uint32 stage, Raster *raster)
 			alpha = natras->hasAlpha;
 		}else
 		{
-			GX2SetPixelTexture(&whitetex, currentShader->samplerLocation);
-			GX2SetPixelSampler(&whitesamp, currentShader->samplerLocation);
+			setTexAndSampler(&whitetex, &whitesamp, stage);
 			alpha = 0;
 		}
 
@@ -1043,7 +1046,7 @@ beginUpdate(Camera *cam)
 
 	GX2SetColorBuffer(frameBuf, GX2_RENDER_TARGET_0);
 	GX2SetDepthBuffer(depthBuf);
-	GX2SetViewport(0.0f, 0.0f, frameBuf->surface.width, frameBuf->surface.height, renderdevice.zNear, renderdevice.zFar);
+	GX2SetViewport(0.0f, 0.0f, frameBuf->surface.width, frameBuf->surface.height, 0.0f, 1.0f);
 	GX2SetScissor(0, 0, frameBuf->surface.width, frameBuf->surface.height);
 	GX2SetDRCScale(frameBuf->surface.width, frameBuf->surface.height);
 }
@@ -1294,8 +1297,8 @@ closeGX2(void)
 
 void createWhiteTexture(void)
 {
-	whitetex.surface.width = 128;
-	whitetex.surface.height = 128;
+	whitetex.surface.width = 1;
+	whitetex.surface.height = 1;
 	whitetex.surface.depth = 1;
 	whitetex.surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
 	whitetex.surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
@@ -1309,7 +1312,7 @@ void createWhiteTexture(void)
 	memset(whitetex.surface.image, 0xFF, whitetex.surface.imageSize);
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, whitetex.surface.image, whitetex.surface.imageSize);
 
-	GX2InitSampler(&whitesamp, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
+	GX2InitSampler(&whitesamp, GX2_TEX_CLAMP_MODE_WRAP, GX2_TEX_XY_FILTER_MODE_POINT);
 }
 
 static int
@@ -1340,18 +1343,11 @@ initGX2()
 
 	resetRenderState();
 
-	#include "shaders/im3d.h"
-
 	defaultShader = Shader::create(default_gsh, GX2_SHADER_MODE_UNIFORM_REGISTER);
-
-	// defaultShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
-	// defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
-	// defaultShader->initAttribute("in_color", 24, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
-	// defaultShader->initAttribute("in_tex0", 40, GX2_ATTRIB_FORMAT_FLOAT_32_32);
 	defaultShader->initAttribute("in_pos", 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
-	// defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
-	defaultShader->initAttribute("in_color", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
-	defaultShader->initAttribute("in_tex0", 28, GX2_ATTRIB_FORMAT_FLOAT_32_32);
+	defaultShader->initAttribute("in_normal", 12, GX2_ATTRIB_FORMAT_FLOAT_32_32_32);
+	defaultShader->initAttribute("in_color", 24, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32);
+	defaultShader->initAttribute("in_tex0", 40, GX2_ATTRIB_FORMAT_FLOAT_32_32);
 
 	defaultShader->init();
 	defaultShader->use();
@@ -1361,10 +1357,7 @@ initGX2()
 	openIm2D();
 	openIm3D();
 
-	// this should be fine to do here since all sampler locations are 0 in our shaders
-	// not the best thing to do though
-	GX2SetPixelTexture(&whitetex, currentShader->samplerLocation);
-	GX2SetPixelSampler(&whitesamp, currentShader->samplerLocation);
+	setTexAndSampler(&whitetex, &whitesamp, 0);
 
 	return 1;
 }
@@ -1405,12 +1398,16 @@ deviceSystemGX2(DeviceReq req, void *arg, int32 n)
 		return 1;
 
 	case DEVICEGETCURRENTSUBSYSTEM:
-		return 1;
+		return 0;
 
 	case DEVICESETSUBSYSTEM:
+		if (n >= 1)
+			return 0;
 		return 1;
 
 	case DEVICEGETSUBSSYSTEMINFO:
+		if (n >= 1)
+			return 0;
 		strncpy(((SubSystemInfo*)arg)->name, "Wii U", sizeof(SubSystemInfo::name));
 		return 1;
 
@@ -1418,12 +1415,16 @@ deviceSystemGX2(DeviceReq req, void *arg, int32 n)
 		return 1;
 
 	case DEVICEGETCURRENTVIDEOMODE:
-		return 1;
+		return 0;
 
 	case DEVICESETVIDEOMODE:
+		if (n >= 1)
+			return 0;
 		return 1;
 
 	case DEVICEGETVIDEOMODEINFO:
+		if (n >= 1)
+			return 0;
 		// TODO: maybe use the actual tv size here?
 		rwmode = (VideoMode*)arg;
 		rwmode->width = 1280;
@@ -1441,7 +1442,7 @@ deviceSystemGX2(DeviceReq req, void *arg, int32 n)
 }
 
 Device renderdevice = {
-	0.0f, 1.0f,
+	-1.0f, 1.0f,
 	gx2::beginUpdate,
 	gx2::endUpdate,
 	gx2::clearCamera,
