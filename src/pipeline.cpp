@@ -212,6 +212,37 @@ instColorFloat(int type, uint8 *dst, RGBA *src, uint32 numVertices, uint32 strid
 	return alpha != 0xFF;
 }
 
+bool32
+instColorFloat_nonNormalized(int type, uint8 *dst, RGBA *src, uint32 numVertices, uint32 stride)
+{
+	uint8 alpha = 0xFF;
+	if(type == VERT_ARGB){
+		for(uint32 i = 0; i < numVertices; i++) {
+			float* f_dst = (float*) dst;
+			f_dst[0] = src->blue;
+			f_dst[1] = src->green;
+			f_dst[2] = src->red;
+			f_dst[3] = src->alpha;
+			alpha &= src->alpha;
+			dst += stride;
+			src++;
+		}
+	}else if(type == VERT_RGBA){
+		for(uint32 i = 0; i < numVertices; i++) {
+			float* f_dst = (float*) dst;
+			f_dst[0] = src->red;
+			f_dst[1] = src->green;
+			f_dst[2] = src->blue;
+			f_dst[3] = src->alpha;
+			alpha &= src->alpha;
+			dst += stride;
+			src++;
+		}
+	}else
+		assert(0 && "unsupported color type");
+	return alpha != 0xFF;
+}
+
 void
 uninstColor(int type, RGBA *dst, uint8 *src, uint32 numVertices, uint32 stride)
 {

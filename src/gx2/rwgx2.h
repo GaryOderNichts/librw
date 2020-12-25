@@ -46,10 +46,11 @@ struct AttribDesc
 enum AttribIndices
 {
 	ATTRIB_POS = 0,
-	// ATTRIB_NORMAL,
+	ATTRIB_NORMAL,
 	ATTRIB_COLOR,
 	ATTRIB_TEXCOORDS0,
-	//ATTRIB_TEXCOORDS1,
+	ATTRIB_WEIGHTS,
+	ATTRIB_INDICES
 };
 
 // default uniform indices
@@ -79,6 +80,9 @@ struct InstanceDataHeader : rw::InstanceDataHeader
 	AttribDesc* attribDesc;
 
 	InstanceData *inst;
+
+	// skin pipeline stores skin positions here
+	V3d* skinPosData;
 };
 
 #ifdef __WIIU__

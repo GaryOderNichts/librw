@@ -19,7 +19,6 @@
 namespace rw {
 namespace gx2 {
 
-// TODO
 
 void
 freeInstanceData(Geometry *geometry)
@@ -31,6 +30,7 @@ freeInstanceData(Geometry *geometry)
 	geometry->instData = nil;
 	free(header->indexBuffer);
 	free(header->vertexBuffer);
+	rwFree(header->skinPosData);
 	rwFree(header->inst);
 	rwFree(header->attribDesc);
 	rwFree(header);
@@ -72,7 +72,7 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 		inst->material = mesh->material;
 		inst->vertexAlpha = 0;
 		inst->offset = offset;
-        memcpy((uint8*)header->indexBuffer + inst->offset,
+		memcpy((uint8*)header->indexBuffer + inst->offset,
 			mesh->indices, inst->numIndex*2);
 		offset += inst->numIndex*2;
 		mesh++;
@@ -83,6 +83,7 @@ instanceMesh(rw::ObjPipeline *rwpipe, Geometry *geo)
 	header->vertexBuffer = nil;
 	header->numAttribs = 0;
 	header->attribDesc = nil;
+	header->skinPosData = nil;
 
 	return header;
 }
@@ -178,11 +179,11 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 		a++;
 
 		// normals
-		// a->index = ATTRIB_NORMAL;
-		// a->size = 3;
-		// a->offset = stride;
-		// stride += a->size*sizeof(float);
-		// a++;
+		a->index = ATTRIB_NORMAL;
+		a->size = 3;
+		a->offset = stride;
+		stride += a->size*sizeof(float);
+		a++;
 
 		// color
 		a->index = ATTRIB_COLOR;
@@ -225,25 +226,25 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 	}
 
 	// Normals
-	// if (!reinstance || geo->lockedSinceInst&Geometry::LOCKNORMALS) {
-	// 	if(hasNormals) {
-	// 		for(a = attribs; a->index != ATTRIB_NORMAL; a++);
+	if (!reinstance || geo->lockedSinceInst&Geometry::LOCKNORMALS) {
+		if(hasNormals) {
+			for(a = attribs; a->index != ATTRIB_NORMAL; a++);
 
-	// 		instV3d(VERT_FLOAT3, verts + a->offset, geo->morphTargets[0].normals,
-	// 			header->totalNumVertex, a->stride);
-	// 	}
-	// 	else {
-	// 		for(a = attribs; a->index != ATTRIB_NORMAL; a++);
+			instV3d(VERT_FLOAT3, verts + a->offset, geo->morphTargets[0].normals,
+				header->totalNumVertex, a->stride);
+		}
+		else {
+			for(a = attribs; a->index != ATTRIB_NORMAL; a++);
 
-	// 		float* f_verts = (float*)(verts + a->offset);
-	// 		for (uint32 i = 0; i < header->totalNumVertex; i++) {
-	// 			f_verts[0] = 0.0f;
-	// 			f_verts[1] = 0.0f;
-	// 			f_verts[2] = 1.0f;
-	// 			f_verts += a->stride/sizeof(float);
-	// 		}
-	// 	}
-	// }
+			float* f_verts = (float*)(verts + a->offset);
+			for (uint32 i = 0; i < header->totalNumVertex; i++) {
+				f_verts[0] = 0.0f;
+				f_verts[1] = 0.0f;
+				f_verts[2] = 1.0f;
+				f_verts += a->stride/sizeof(float);
+			}
+		}
+	}
 
 	// Prelighting
 	if (!reinstance || geo->lockedSinceInst&Geometry::LOCKPRELIGHT) {
@@ -254,8 +255,10 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 			InstanceData *inst = header->inst;
 			while(n--){
 				assert(inst->minVert != 0xFFFFFFFF);
-				inst->vertexAlpha = instColorFloat(VERT_RGBA, verts + a->offset,
-					geo->colors + inst->minVert, inst->numVertices, a->stride);
+				inst->vertexAlpha = instColorFloat(VERT_RGBA,
+					verts + a->offset + a->stride*inst->minVert,
+					geo->colors + inst->minVert,
+					inst->numVertices, a->stride);
 				inst++;
 			}
 		}
@@ -278,7 +281,7 @@ defaultInstanceCB(Geometry *geo, InstanceDataHeader *header, bool32 reinstance)
 		if (geo->numTexCoordSets > 0) {
 			for(a = attribs; a->index != ATTRIB_TEXCOORDS0; a++);
 
-			instTexCoords(VERT_FLOAT2, verts + a->offset, geo->texCoords[geo->numTexCoordSets-1],
+			instTexCoords(VERT_FLOAT2, verts + a->offset, geo->texCoords[0],
 				header->totalNumVertex, a->stride);
 		}
 		else {
