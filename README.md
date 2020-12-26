@@ -1,3 +1,8 @@
+### TODO gx2
+- dxt support
+- stencil support
+- multisampling (do we really need multisampling on the WiiU?)
+
 librw
 =====
 

@@ -370,6 +370,13 @@ static GX2TexXYFilterMode filterConvMap_NoMIP[] = {
 	GX2_TEX_XY_FILTER_MODE_POINT, GX2_TEX_XY_FILTER_MODE_LINEAR
 };
 
+static GX2TexMipFilterMode filterConvMap_MIP[] = {
+	GX2_TEX_MIP_FILTER_MODE_NONE, 
+	GX2_TEX_MIP_FILTER_MODE_POINT, GX2_TEX_MIP_FILTER_MODE_LINEAR,
+	GX2_TEX_MIP_FILTER_MODE_POINT, GX2_TEX_MIP_FILTER_MODE_POINT,
+	GX2_TEX_MIP_FILTER_MODE_LINEAR, GX2_TEX_MIP_FILTER_MODE_LINEAR
+};
+
 static GX2TexClampMode addressConvMap[] = {
 	GX2_TEX_CLAMP_MODE_WRAP, GX2_TEX_CLAMP_MODE_WRAP, GX2_TEX_CLAMP_MODE_MIRROR,
 	GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_CLAMP_MODE_CLAMP_BORDER
@@ -388,6 +395,9 @@ setFilterMode(uint32 stage, int32 filter)
 			if(natras->filterMode != filter && natras->sampler)
 			{
 				GX2InitSamplerXYFilter(natras->sampler, filterConvMap_NoMIP[filter], filterConvMap_NoMIP[filter], GX2_TEX_ANISO_RATIO_NONE);
+				if(natras->autogenMipmap || natras->numLevels > 1) {
+					GX2InitSamplerZMFilter(natras->sampler, GX2_TEX_Z_FILTER_MODE_POINT, filterConvMap_MIP[filter]);
+				}
 				natras->filterMode = filter;
 			}
 		}
@@ -507,6 +517,9 @@ setRasterStage(uint32 stage, Raster *raster)
 			if(natras->filterMode != filter)
 			{
 				GX2InitSamplerXYFilter(natras->sampler, filterConvMap_NoMIP[filter], filterConvMap_NoMIP[filter], GX2_TEX_ANISO_RATIO_NONE);
+				if(natras->autogenMipmap || natras->numLevels > 1) {
+					GX2InitSamplerZMFilter(natras->sampler, GX2_TEX_Z_FILTER_MODE_POINT, filterConvMap_MIP[filter]);
+				}
 				natras->filterMode = filter;
 			}
 			if(natras->addressU != addrU || natras->addressV != addrV)
@@ -955,8 +968,10 @@ clearCamera(Camera *cam, RGBA *col, uint32 mode)
 	if(mode & Camera::CLEARIMAGE)
 		GX2ClearColor(frameBuf, col->red / 255.0f, col->green / 255.0f, col->blue / 255.0f, col->alpha / 255.0f);
 	if(mode & Camera::CLEARZ)
-		GX2ClearDepthStencilEx(depthBuf, depthBuf->depthClear, depthBuf->stencilClear, (GX2ClearFlags) (GX2_CLEAR_FLAGS_DEPTH | GX2_CLEAR_FLAGS_STENCIL));
-	
+		GX2ClearDepthStencilEx(depthBuf, depthBuf->depthClear, depthBuf->stencilClear, GX2_CLEAR_FLAGS_DEPTH);
+	if (mode & Camera::CLEARSTENCIL)
+		GX2ClearDepthStencilEx(depthBuf, depthBuf->depthClear, depthBuf->stencilClear, GX2_CLEAR_FLAGS_STENCIL);
+
 	GX2SetContextState(globals.contextState);
 }
 
@@ -1432,7 +1447,12 @@ deviceSystemGX2(DeviceReq req, void *arg, int32 n)
 		rwmode->depth = 32;
 		rwmode->flags = VIDEOMODEEXCLUSIVE;
 		return 1;
-
+	case DEVICEGETMAXMULTISAMPLINGLEVELS:
+		return 1;
+	case DEVICEGETMULTISAMPLINGLEVELS:
+		return 1;
+	case DEVICESETMULTISAMPLINGLEVELS:
+		return 1;
 	default:
 		WHBLogPrintf("not implemented");
 		assert(0 && "not implemented");

@@ -29,6 +29,11 @@ int32 nativeRasterOffset;
 static Raster*
 rasterCreateTexture(Raster *raster)
 {
+	if(raster->format & (Raster::PAL4 | Raster::PAL8)) {
+		RWERROR((ERR_NOTEXTURE));
+		return nil;
+	}
+
 	GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
 
 	natras->texture = calloc(1, sizeof(GX2Texture));
@@ -40,7 +45,6 @@ rasterCreateTexture(Raster *raster)
 	tex->surface.width = raster->width;
 	tex->surface.height = raster->height;
 	tex->surface.depth = 1;
-	tex->surface.mipLevels = 1;
 	tex->surface.aa = GX2_AA_MODE1X;
 	tex->surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
 	tex->viewNumMips = 1;
@@ -60,6 +64,22 @@ rasterCreateTexture(Raster *raster)
 		RWERROR((ERR_INVRASTER));
 		return nil;
 	}
+
+	if(raster->format & Raster::MIPMAP){
+		int w = raster->width;
+		int h = raster->height;
+		natras->numLevels = 0;
+		while(w != 1 || h != 1){
+			natras->numLevels++;
+			if(w > 1) w /= 2;
+			if(h > 1) h /= 2;
+		}
+	}
+	natras->autogenMipmap = (raster->format & (Raster::MIPMAP|Raster::AUTOMIPMAP)) == (Raster::MIPMAP|Raster::AUTOMIPMAP);
+	if(natras->autogenMipmap)
+		natras->numLevels = 1;
+
+	tex->surface.mipLevels = natras->numLevels-1;
 
 	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
 	GX2InitTextureRegs(tex);
@@ -120,6 +140,8 @@ rasterCreateCameraTexture(Raster *raster)
 
 	raster->stride = tex->surface.pitch * natras->bpp;
 
+	natras->autogenMipmap = (raster->format & (Raster::MIPMAP|Raster::AUTOMIPMAP)) == (Raster::MIPMAP|Raster::AUTOMIPMAP);
+
 	natras->addressU = 0;
 	natras->addressV = 0;
 
@@ -163,9 +185,7 @@ rasterCreateCamera(Raster *raster)
 	colorBuffer->surface.image = GfxHeapAllocMEM1(colorBuffer->surface.imageSize, colorBuffer->surface.alignment);
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, colorBuffer->surface.image, colorBuffer->surface.imageSize);
 
-	raster->originalWidth = raster->width;
-	raster->originalHeight = raster->height;
-	raster->pixels = nil;
+	natras->autogenMipmap = 0;
 
 	return raster;
 }
@@ -226,33 +246,50 @@ rasterCreateZbuffer(Raster *raster)
 Raster*
 rasterCreate(Raster *raster)
 {
+	GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
+
+	natras->isCompressed = 0;
+	natras->hasAlpha = 0;
+	natras->numLevels = 1;
+
+	Raster *ret = raster;
+
 	if(raster->width == 0 || raster->height == 0)
 	{
 		raster->flags |= Raster::DONTALLOCATE;
 		raster->stride = 0;
-		return raster;
+		goto ret;
 	}
 	if(raster->flags & Raster::DONTALLOCATE)
-		return raster;
+		goto ret;
 
 	switch(raster->type)
 	{
 	case Raster::NORMAL:
 	case Raster::TEXTURE:
-		return rasterCreateTexture(raster);
+		ret = rasterCreateTexture(raster);
+		break;
 	case Raster::CAMERATEXTURE:
-		return rasterCreateCameraTexture(raster);
+		ret = rasterCreateCameraTexture(raster);
+		break;
 	case Raster::ZBUFFER:
-		return rasterCreateZbuffer(raster);
+		ret = rasterCreateZbuffer(raster);
+		break;
 	case Raster::CAMERA:
-		return rasterCreateCamera(raster);
+		ret = rasterCreateCamera(raster);
+		break;
 
 	default:
-		break;
+		RWERROR((ERR_INVRASTER));
+		return nil;
 	}
 
-	RWERROR((ERR_INVRASTER));
-	return NULL;
+	ret:
+	raster->originalWidth = raster->width;
+	raster->originalHeight = raster->height;
+	raster->originalStride = raster->stride;
+	raster->originalPixels = raster->pixels;
+	return ret;
 }
 
 uint8*
@@ -293,9 +330,9 @@ rasterUnlock(Raster *raster, int32 level)
 }
 
 int32
-rasterNumLevels(Raster*)
+rasterNumLevels(Raster* raster)
 {
-	return 1;
+	return PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset)->numLevels;
 }
 
 bool32
@@ -367,13 +404,14 @@ rasterFromImage(Raster *raster, Image *image)
 	}
 
 	GX2Raster *natras = PLUGINOFFSET(GX2Raster, raster, nativeRasterOffset);
+	int32 format = raster->format&0xF00;
 	switch(image->depth){
 	case 32:
-		if(raster->format == Raster::C8888)
+		if(format == Raster::C8888)
 		{
 			conv = conv_RGBA8888_from_RGBA8888;
 		}
-		else if(raster->format == Raster::C888)
+		else if(format == Raster::C888)
 		{
 			conv = conv_RGBA8888_from_RGB888;
 		}
@@ -381,11 +419,11 @@ rasterFromImage(Raster *raster, Image *image)
 			goto err;
 		break;
 	case 24:
-		if(raster->format == Raster::C8888)
+		if(format == Raster::C8888)
 		{
 			conv = conv_RGBA8888_from_RGB888;
 		}
-		else if(raster->format == Raster::C888)
+		else if(format == Raster::C888)
 		{
 			conv = conv_RGBA8888_from_RGB888;
 		}
@@ -393,7 +431,7 @@ rasterFromImage(Raster *raster, Image *image)
 			goto err;
 		break;
 	case 16:
-		if(raster->format == Raster::C1555)
+		if(format == Raster::C1555)
 			conv = conv_RGBA8888_from_ARGB1555;
 		else
 			goto err;
@@ -410,7 +448,13 @@ rasterFromImage(Raster *raster, Image *image)
 
 	natras->hasAlpha = image->hasAlpha();
 
-	uint8 *pixels = raster->lock(0, Raster::LOCKWRITE | Raster::LOCKNOFETCH);
+	bool unlock = false;
+	if(raster->pixels == nil){
+		raster->lock(0, Raster::LOCKWRITE|Raster::LOCKNOFETCH);
+		unlock = true;
+	}
+
+	uint8 *pixels = raster->pixels;
 	assert(pixels);
 
 	uint8 *imgpixels = image->pixels + (image->height-1)*image->stride;
@@ -429,7 +473,8 @@ rasterFromImage(Raster *raster, Image *image)
 		imgpixels -= image->stride;
 		pixels += raster->stride;
 	}
-	raster->unlock(0);
+	if(unlock)
+		raster->unlock(0);
 
 	if(truecolimg)
 		truecolimg->destroy();
@@ -487,12 +532,9 @@ readNativeTexture(Stream *stream)
 	uint8 *data;
 	for(int32 i = 0; i < numLevels; i++){
 		size = stream->readU32();
-		if(i < raster->getNumLevels()){
-			data = raster->lock(i, Raster::LOCKWRITE|Raster::LOCKNOFETCH);
-			stream->read8(data, size);
-			raster->unlock(i);
-		}else
-			stream->seek(size);
+		data = raster->lock(i, Raster::LOCKWRITE|Raster::LOCKNOFETCH);
+		stream->read8(data, size);
+		raster->unlock(i);
 	}
 	return tex;
 }
@@ -513,7 +555,7 @@ writeNativeTexture(Texture *tex, Stream *stream)
 	stream->write8(tex->mask, 32);
 
 	// Raster
-	int32 numLevels = raster->getNumLevels();
+	int32 numLevels = natras->numLevels;
 	stream->writeI32(raster->format);
 	stream->writeI32(raster->width);
 	stream->writeI32(raster->height);
@@ -534,7 +576,7 @@ writeNativeTexture(Texture *tex, Stream *stream)
 uint32
 getSizeNativeTexture(Texture *tex)
 {
-	uint32 size = 12 + 72 + 20;
+	uint32 size = 12 + 72 + 28;
 	int32 levels = tex->raster->getNumLevels();
 	for(int32 i = 0; i < levels; i++)
 		size += 4 + getLevelSize(tex->raster, i);

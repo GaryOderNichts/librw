@@ -218,8 +218,11 @@ struct GX2Raster
 	void* texture;
 	GX2Sampler* sampler;
 
-	bool32 hasAlpha;
 	uint32_t bpp;
+	bool isCompressed;
+	bool hasAlpha;
+	bool autogenMipmap;
+	int8 numLevels;
 
 	int32 filterMode;
 	int32 addressU;
