@@ -905,10 +905,11 @@ flushCache(void)
 	if(objectDirty){
 		setUniform(u_world, 16, &uniformObject.world);
 		setUniform(u_ambLight, 4, &uniformObject.ambLight);
-		setUniform(u_lightParams, MAX_LIGHTS * 4, &uniformObject.lightParams);
-		setUniform(u_lightPosition, MAX_LIGHTS * 4, uniformObject.lightPosition);
-		setUniform(u_lightDirection, MAX_LIGHTS * 4, uniformObject.lightDirection);
-		setUniform(u_lightColor, MAX_LIGHTS * 4, uniformObject.lightColor);
+		// not implemented yet
+		// setUniform(u_lightParams, MAX_LIGHTS * 4, &uniformObject.lightParams);
+		// setUniform(u_lightPosition, MAX_LIGHTS * 4, uniformObject.lightPosition);
+		// setUniform(u_lightDirection, MAX_LIGHTS * 4, uniformObject.lightDirection);
+		// setUniform(u_lightColor, MAX_LIGHTS * 4, uniformObject.lightColor);
 		objectDirty = 0;
 	}
 
@@ -1049,7 +1050,25 @@ beginUpdate(Camera *cam)
 		stateDirty = 1;
 	}
 
-	GX2WaitForVsync();
+	uint32_t swapCount, flipCount;
+	OSTime lastFlip, lastVsync;
+	uint32_t waitCount = 0;
+
+	while (1) {
+		GX2GetSwapStatus(&swapCount, &flipCount, &lastFlip, &lastVsync);
+
+		if (flipCount >= swapCount) {
+			break;
+		}
+
+		if (waitCount >= 10) {
+			WHBLogPrint("GPU Timed out. This should never happen.");
+			break;
+		}
+
+		waitCount++;
+		GX2WaitForVsync();
+	}
 
 	GX2Raster *natfb = PLUGINOFFSET(GX2Raster, cam->frameBuffer, nativeRasterOffset);
 	GX2Raster *natzb = PLUGINOFFSET(GX2Raster, cam->zBuffer, nativeRasterOffset);
@@ -1070,25 +1089,28 @@ static void
 endUpdate(Camera *cam)
 {
 	GX2Raster *natfb = PLUGINOFFSET(GX2Raster, cam->frameBuffer, nativeRasterOffset);
-	GX2Raster *natzb = PLUGINOFFSET(GX2Raster, cam->zBuffer, nativeRasterOffset);
 
 	GX2ColorBuffer* frameBuf = (GX2ColorBuffer*) natfb->texture;
-	GX2DepthBuffer* depthBuf = (GX2DepthBuffer*) natzb->texture;
 
+	GX2DrawDone();
 	GX2CopyColorBufferToScanBuffer(frameBuf, GX2_SCAN_TARGET_TV);
 	GX2CopyColorBufferToScanBuffer(frameBuf, GX2_SCAN_TARGET_DRC);
-
-	GX2SwapScanBuffers();
-	GX2Flush();
-	GX2DrawDone();
-	GX2SetTVEnable(TRUE);
-	GX2SetDRCEnable(TRUE);
 
 	freeIm2DBuffers();
 	freeIm3DBuffers();
 #ifdef RW_GX2_USE_UBOS
 	shaders_clean();
 #endif
+}
+
+static void
+showRaster(Raster *raster, uint32 flags)
+{
+	GX2SwapScanBuffers();
+	GX2Flush();
+
+	GX2SetTVEnable(TRUE);
+	GX2SetDRCEnable(TRUE);
 }
 
 static bool32
@@ -1241,7 +1263,7 @@ openGX2(void)
 	GX2SetupContextStateEx(globals.contextState, TRUE);
 	GX2SetContextState(globals.contextState);
 
-	// TODO maybe set vsync in gx2::ShowRaster?
+	// Wii U complains about no vsync
 	GX2SetSwapInterval(1);
 
 	return TRUE;
@@ -1466,7 +1488,7 @@ Device renderdevice = {
 	gx2::beginUpdate,
 	gx2::endUpdate,
 	gx2::clearCamera,
-	null::showRaster,
+	gx2::showRaster,
 	gx2::rasterRenderFast,
 	gx2::setRenderState,
 	gx2::getRenderState,

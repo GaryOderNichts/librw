@@ -18,7 +18,6 @@ include $(DEVKITPRO)/wut/share/wut_rules
 # INCLUDES is a list of directories containing header files
 #-------------------------------------------------------------------------------
 TARGET		:=	rw
-BUILD		:=	build
 SOURCES		:=	src \
 				src/d3d \
 				src/gl \
@@ -108,7 +107,6 @@ release:
 
 lib/lib$(TARGET).a : $(SOURCES) $(INCLUDES) | lib release
 	@$(MAKE) BUILD=release OUTPUT=$(CURDIR)/$@ \
-	BUILD_CFLAGS="-DNDEBUG=1 -O2" \
 	DEPSDIR=$(CURDIR)/release \
 	--no-print-directory -C release \
 	-f $(CURDIR)/Makefile

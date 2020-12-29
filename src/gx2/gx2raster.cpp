@@ -47,7 +47,6 @@ rasterCreateTexture(Raster *raster)
 	tex->surface.depth = 1;
 	tex->surface.aa = GX2_AA_MODE1X;
 	tex->surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
-	tex->viewNumMips = 1;
 	tex->viewNumSlices = 1;
 	tex->compMap = 0x00010203;
 
@@ -79,7 +78,8 @@ rasterCreateTexture(Raster *raster)
 	if(natras->autogenMipmap)
 		natras->numLevels = 1;
 
-	tex->surface.mipLevels = natras->numLevels-1;
+	tex->surface.mipLevels = natras->numLevels;
+	tex->viewNumMips = natras->numLevels;
 
 	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
 	GX2InitTextureRegs(tex);
