@@ -3,6 +3,7 @@
 #include <string.h>
 #include <assert.h>
 #include <malloc.h>
+#include <vector>
 
 #include "../rwbase.h"
 #include "../rwerror.h"
@@ -40,6 +41,15 @@ struct GX2Globals
 	GX2SurfaceFormat tvSurfaceFormat;
 	GX2ContextState* contextState = NULL;
 } globals;
+
+struct MEM1Buffer
+{
+	void** buffer;
+	uint32 size;
+	uint32 alignment;
+};
+std::vector<MEM1Buffer> gfxMEM1Buffers;
+bool gfxInForeground = false;
 
 struct UniformState
 {
@@ -1164,6 +1174,105 @@ GfxGX2RFree(GX2RResourceFlags flags, void *block)
 	}
 }
 
+void addToMEM1Buffer(void** buffer, uint32 size, uint32 alignment)
+{
+	MEM1Buffer buf;
+	buf.buffer = buffer;
+	buf.size = size;
+	buf.alignment = alignment;
+	gfxMEM1Buffers.push_back(buf);
+}
+
+void removeFromMEM1Buffer(void* buffer)
+{
+	auto it = gfxMEM1Buffers.begin();
+	while (it != gfxMEM1Buffers.end()) {
+		if ((*it).buffer && *(*it).buffer == buffer) {
+			gfxMEM1Buffers.erase(it);
+		}
+		else {
+			++it;
+		}
+	}
+}
+
+static uint32_t
+GfxProcCallbackAcquired(void *context)
+{
+	if (!GfxHeapInitMEM1()) {
+		WHBLogPrintf("GfxHeapInitMEM1 failed");
+		return -1;
+	}
+
+	if (!GfxHeapInitForeground()) {
+		WHBLogPrintf("GfxHeapInitForeground failed");
+		return -1;
+	}
+
+	gfxInForeground = true;
+
+	// Allocate TV scan buffer.
+	globals.tvScanBuffer = GfxHeapAllocForeground(globals.tvScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
+	if (!globals.tvScanBuffer)
+	{
+		WHBLogPrintf("Cannot allocate TV scan buffer");
+		return -1;
+	}
+	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, globals.tvScanBuffer, globals.tvScanBufferSize);
+	GX2SetTVBuffer(globals.tvScanBuffer, globals.tvScanBufferSize, globals.tvRenderMode, globals.tvSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
+
+	// Allocate DRC scan buffer.
+	globals.drcScanBuffer = GfxHeapAllocForeground(globals.drcScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
+	if (!globals.drcScanBuffer)
+	{
+		WHBLogPrintf("Cannot allocate DRC scan buffer");
+		return -1;
+	}
+	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, globals.drcScanBuffer, globals.drcScanBufferSize);
+	GX2SetDRCBuffer(globals.drcScanBuffer, globals.drcScanBufferSize, globals.drcRenderMode, globals.drcSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
+
+	// reallocate all buffers
+	for (const MEM1Buffer& buf : gfxMEM1Buffers) {
+		if (buf.buffer) {
+			*buf.buffer = GfxHeapAllocMEM1(buf.size, buf.alignment);
+		}
+	}
+
+	return 0;
+}
+
+static uint32_t
+GfxProcCallbackReleased(void *context)
+{
+	GX2DrawDone();
+
+	gfxInForeground = false;
+
+	if (globals.tvScanBuffer)
+	{
+		GfxHeapFreeForeground(globals.tvScanBuffer);
+		globals.tvScanBuffer = NULL;
+	}
+
+	if (globals.drcScanBuffer)
+	{
+		GfxHeapFreeForeground(globals.drcScanBuffer);
+		globals.drcScanBuffer = NULL;
+	}
+
+	// free all buffers in MEM1
+	for (const MEM1Buffer& buf : gfxMEM1Buffers) {
+		if (buf.buffer) {
+			GfxHeapFreeMEM1(*buf.buffer);
+			*buf.buffer = nil;
+		}
+	}
+
+	GfxHeapDestroyMEM1();
+	GfxHeapDestroyForeground();
+	return 0;
+}
+
 static int
 openGX2(void)
 {
@@ -1219,38 +1328,10 @@ openGX2(void)
 	GX2CalcDRCSize(globals.drcRenderMode, globals.drcSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE, &globals.drcScanBufferSize, &unk);
 
 	GX2RSetAllocator(&GfxGX2RAlloc, &GfxGX2RFree);
+	ProcUIRegisterCallback(PROCUI_CALLBACK_ACQUIRE, GfxProcCallbackAcquired, NULL, 100);
+	ProcUIRegisterCallback(PROCUI_CALLBACK_RELEASE, GfxProcCallbackReleased, NULL, 100);
 
-	if (!GfxHeapInitMEM1())
-	{
-		WHBLogPrintf("%s: GfxHeapInitMEM1 failed", __FUNCTION__);
-		goto error;
-	}
-
-	if (!GfxHeapInitForeground())
-	{
-		WHBLogPrintf("%s: GfxHeapInitForeground failed", __FUNCTION__);
-		goto error;
-	}
-
-	// Allocate TV scan buffer.
-	globals.tvScanBuffer = GfxHeapAllocForeground(globals.tvScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
-	if (!globals.tvScanBuffer)
-	{
-		WHBLogPrintf("%s: sTvScanBuffer = GfxHeapAllocForeground(0x%X, 0x%X) failed", __FUNCTION__, globals.tvScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
-		goto error;
-	}
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, globals.tvScanBuffer, globals.tvScanBufferSize);
-	GX2SetTVBuffer(globals.tvScanBuffer, globals.tvScanBufferSize, globals.tvRenderMode, globals.tvSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
-
-	// Allocate DRC scan buffer.
-	globals.drcScanBuffer = GfxHeapAllocForeground(globals.drcScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
-	if (!globals.drcScanBuffer)
-	{
-		WHBLogPrintf("%s: sDrcScanBuffer = GfxHeapAllocForeground(0x%X, 0x%X) failed", __FUNCTION__, globals.drcScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
-		goto error;
-	}
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, globals.drcScanBuffer, globals.drcScanBufferSize);
-	GX2SetDRCBuffer(globals.drcScanBuffer, globals.drcScanBufferSize, globals.drcRenderMode, globals.drcSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
+	GfxProcCallbackAcquired(nil);
 
 	// Initialise TV context state.
 	globals.contextState = (GX2ContextState*) GfxHeapAllocMEM2(sizeof(GX2ContextState), GX2_CONTEXT_STATE_ALIGNMENT);
@@ -1275,22 +1356,10 @@ error:
 		globals.commandBufferPool = NULL;
 	}
 
-	if (globals.tvScanBuffer)
-	{
-		GfxHeapFreeForeground(globals.tvScanBuffer);
-		globals.tvScanBuffer = NULL;
-	}
-
 	if (globals.contextState)
 	{
 		GfxHeapFreeMEM2(globals.contextState);
 		globals.contextState = NULL;
-	}
-
-	if (globals.drcScanBuffer)
-	{
-		GfxHeapFreeForeground(globals.drcScanBuffer);
-		globals.drcScanBuffer = NULL;
 	}
 	return FALSE;
 }
@@ -1298,22 +1367,9 @@ error:
 static int
 closeGX2(void)
 {
-	GX2DrawDone();
-
-	if (globals.tvScanBuffer)
-	{
-		GfxHeapFreeForeground(globals.tvScanBuffer);
-		globals.tvScanBuffer = NULL;
+	if (gfxInForeground) {
+		GfxProcCallbackReleased(nil);
 	}
-
-	if (globals.drcScanBuffer)
-	{
-		GfxHeapFreeForeground(globals.drcScanBuffer);
-		globals.drcScanBuffer = NULL;
-	}
-
-	GfxHeapDestroyMEM1();
-	GfxHeapDestroyForeground();
 
 	GX2RSetAllocator(NULL, NULL);
 	GX2Shutdown();

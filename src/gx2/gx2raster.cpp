@@ -183,6 +183,7 @@ rasterCreateCamera(Raster *raster)
 	raster->stride = colorBuffer->surface.pitch * natras->bpp;
 
 	colorBuffer->surface.image = GfxHeapAllocMEM1(colorBuffer->surface.imageSize, colorBuffer->surface.alignment);
+	addToMEM1Buffer(&colorBuffer->surface.image, colorBuffer->surface.imageSize, colorBuffer->surface.alignment);
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, colorBuffer->surface.image, colorBuffer->surface.imageSize);
 
 	natras->autogenMipmap = 0;
@@ -232,11 +233,13 @@ rasterCreateZbuffer(Raster *raster)
 	GfxInitDepthBuffer(depthBuffer, raster->width, raster->height, GX2_SURFACE_FORMAT_FLOAT_R32, GX2_AA_MODE1X);
 
 	depthBuffer->surface.image = GfxHeapAllocMEM1(depthBuffer->surface.imageSize, depthBuffer->surface.alignment);
+	addToMEM1Buffer(&depthBuffer->surface.image, depthBuffer->surface.imageSize, depthBuffer->surface.alignment);
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, depthBuffer->surface.image, depthBuffer->surface.imageSize);
 
 	uint32 zSize, zAlignment;
 	GX2CalcDepthBufferHiZInfo(depthBuffer, &zSize, &zAlignment);
 	depthBuffer->hiZPtr = GfxHeapAllocMEM1(zSize, zAlignment);
+	addToMEM1Buffer(&depthBuffer->hiZPtr, zSize, zAlignment);
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU, depthBuffer->hiZPtr, zSize);
 	GX2InitDepthBufferHiZEnable(depthBuffer, TRUE);
 
@@ -610,30 +613,43 @@ destroyNativeRaster(void *object, int32 offset, int32)
 		{
 			GX2RDestroySurfaceEx(&((GX2Texture*)natras->texture)->surface, (GX2RResourceFlags) 0);
 			free(natras->texture);
+			natras->texture = nil;
 		}
 		free(natras->sampler);
+		natras->sampler = nil;
 		break;
 	case Raster::CAMERATEXTURE:
 		if (natras->texture)
 		{
 			GX2RDestroySurfaceEx(&((GX2Texture*)natras->texture)->surface, (GX2RResourceFlags) 0);
 			free(natras->texture);
+			natras->texture = nil;
 		}
 		free(natras->sampler);
+		natras->sampler = nil;
 		break;
 	case Raster::ZBUFFER:
 		if (natras->texture)
 		{
-			GfxHeapFreeMEM1(((GX2DepthBuffer*)natras->texture)->surface.image);
-			GfxHeapFreeMEM1(((GX2DepthBuffer*)natras->texture)->hiZPtr);
+			removeFromMEM1Buffer(((GX2DepthBuffer*)natras->texture)->surface.image);
+			removeFromMEM1Buffer(((GX2DepthBuffer*)natras->texture)->hiZPtr);
+			if (gfxInForeground) {
+				GfxHeapFreeMEM1(((GX2DepthBuffer*)natras->texture)->surface.image);
+				GfxHeapFreeMEM1(((GX2DepthBuffer*)natras->texture)->hiZPtr);
+			}
 			free(natras->texture);
+			natras->texture = nil;
 		}
 		break;
 	case Raster::CAMERA:
 		if (natras->texture)
 		{
-			GfxHeapFreeMEM1(((GX2ColorBuffer*)natras->texture)->surface.image);
+			removeFromMEM1Buffer(((GX2ColorBuffer*)natras->texture)->surface.image);
+			if (gfxInForeground) {
+				GfxHeapFreeMEM1(((GX2ColorBuffer*)natras->texture)->surface.image);
+			}
 			free(natras->texture);
+			natras->texture = nil;
 		}
 		break;
 

@@ -213,6 +213,10 @@ ObjPipeline *makeDefaultPipeline(void);
 
 extern int32 nativeRasterOffset;
 
+extern bool gfxInForeground;
+void addToMEM1Buffer(void** buffer, uint32 size, uint32 alignment);
+void removeFromMEM1Buffer(void* buffer);
+
 struct GX2Raster
 {
 	void* texture;
