@@ -121,9 +121,15 @@ decompressDXT1(uint8 *adst, int32 w, int32 h, uint8 *src)
 	uint8 idx[16];
 	uint8 (*dst)[4] = (uint8(*)[4])adst;
 	for(int32 j = 0; j < w*h/2; j += 8){
+#ifdef BIGENDIAN
+		uint32 colors = __builtin_bswap32(*((uint32*)&src[j+0]));
+#else
+		uint32 colors = *((uint32*)&src[j+0]);
+#endif
+
 		/* calculate colors */
-		uint32 col0 = *((uint16*)&src[j+0]);
-		uint32 col1 = *((uint16*)&src[j+2]);
+		uint32 col0 = colors & 0xffff;
+		uint32 col1 = colors >> 16;
 		c[0][0] = ((col0>>11) & 0x1F)*0xFF/0x1F;
 		c[0][1] = ((col0>> 5) & 0x3F)*0xFF/0x3F;
 		c[0][2] = ( col0      & 0x1F)*0xFF/0x1F;
@@ -156,7 +162,11 @@ decompressDXT1(uint8 *adst, int32 w, int32 h, uint8 *src)
 		}
 
 		/* make index list */
+#ifdef BIGENDIAN
+		uint32 indices = __builtin_bswap32(*((uint32*)&src[j+4]));
+#else
 		uint32 indices = *((uint32*)&src[j+4]);
+#endif
 		for(int32 k = 0; k < 16; k++){
 			idx[k] = indices & 0x3;
 			indices >>= 2;
@@ -190,8 +200,13 @@ decompressDXT3(uint8 *adst, int32 w, int32 h, uint8 *src)
 	uint8 (*dst)[4] = (uint8(*)[4])adst;
 	for(int32 j = 0; j < w*h; j += 16){
 		/* calculate colors */
-		uint32 col0 = *((uint16*)&src[j+8]);
-		uint32 col1 = *((uint16*)&src[j+10]);
+#ifdef BIGENDIAN
+		uint32 colors = __builtin_bswap32(*((uint32*)&src[j+8]));
+#else
+		uint32 colors = *((uint32*)&src[j+8]);
+#endif
+		uint32 col0 = colors & 0xffff;
+		uint32 col1 = colors >> 16;
 		c[0][0] = ((col0>>11) & 0x1F)*0xFF/0x1F;
 		c[0][1] = ((col0>> 5) & 0x3F)*0xFF/0x3F;
 		c[0][2] = ( col0      & 0x1F)*0xFF/0x1F;
@@ -209,12 +224,23 @@ decompressDXT3(uint8 *adst, int32 w, int32 h, uint8 *src)
 		c[3][2] = (1*c[0][2] + 2*c[1][2])/3;
 
 		/* make index list */
+#ifdef BIGENDIAN
+		uint32 indices = __builtin_bswap32(*((uint32*)&src[j+12]));
+#else
 		uint32 indices = *((uint32*)&src[j+12]);
+#endif
 		for(int32 k = 0; k < 16; k++){
 			idx[k] = indices & 0x3;
 			indices >>= 2;
 		}
+
+#ifdef BIGENDIAN
+		uint32 alphalo = __builtin_bswap32(*((uint32*)&src[j+0]));
+		uint32 alphahi = __builtin_bswap32(*((uint32*)&src[j+4]));
+		uint64 alphas = ((uint64_t) alphahi << 32) | alphalo;
+#else
 		uint64 alphas = *((uint64*)&src[j+0]);
+#endif
 		for(int32 k = 0; k < 16; k++){
 			a[k] = (alphas & 0xF)*17;
 			alphas >>= 4;
@@ -249,8 +275,13 @@ decompressDXT5(uint8 *adst, int32 w, int32 h, uint8 *src)
 	uint8 (*dst)[4] = (uint8(*)[4])adst;
 	for(int32 j = 0; j < w*h; j += 16){
 		/* calculate colors */
-		uint32 col0 = *((uint16*)&src[j+8]);
-		uint32 col1 = *((uint16*)&src[j+10]);
+#ifdef BIGENDIAN
+		uint32 colors = __builtin_bswap32(*((uint32*)&src[j+8]));
+#else
+		uint32 colors = *((uint32*)&src[j+8]);
+#endif
+		uint32 col0 = colors & 0xffff;
+		uint32 col1 = colors >> 16;
 		c[0][0] = ((col0>>11) & 0x1F)*0xFF/0x1F;
 		c[0][1] = ((col0>> 5) & 0x3F)*0xFF/0x3F;
 		c[0][2] = ( col0      & 0x1F)*0xFF/0x1F;
@@ -295,13 +326,23 @@ decompressDXT5(uint8 *adst, int32 w, int32 h, uint8 *src)
 		}
 
 		/* make index list */
+#ifdef BIGENDIAN
+		uint32 indices = __builtin_bswap32(*((uint32*)&src[j+12]));
+#else
 		uint32 indices = *((uint32*)&src[j+12]);
+#endif
 		for(int32 k = 0; k < 16; k++){
 			idx[k] = indices & 0x3;
 			indices >>= 2;
 		}
 		// only 6 indices
+#ifdef BIGENDIAN
+		uint32 alphalo = __builtin_bswap32(*((uint32*)&src[j+2]));
+		uint32 alphahi = __builtin_bswap32(*((uint32*)&src[j+6]));
+		uint64 alphas = ((uint64_t) alphahi << 32) | alphalo;
+#else
 		uint64 alphas = *((uint64*)&src[j+2]);
+#endif
 		for(int32 k = 0; k < 16; k++){
 			aidx[k] = alphas & 0x7;
 			alphas >>= 3;
