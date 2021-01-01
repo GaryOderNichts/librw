@@ -47,7 +47,6 @@ Shader *im2DOverrideShader;
 static int32 u_xform;
 
 std::vector<float*> im2DVbo;
-std::vector<uint16*> im2DIbo;
 
 void
 openIm2D(void)
@@ -82,12 +81,8 @@ freeIm2DBuffers(void)
 	for (uint32_t i = 0; i < im2DVbo.size(); i++) {
 		free(im2DVbo[i]);
 	}
-	for (uint32_t i = 0; i < im2DIbo.size(); i++) {
-		free(im2DIbo[i]);
-	}
 
 	im2DVbo.clear();
-	im2DIbo.clear();
 }
 
 static Im2DVertex tmpprimbuf[3];
@@ -171,14 +166,10 @@ im2DRenderIndexedPrimitive(PrimitiveType primType,
 
 	uint32 ibo_lenght = numIndices * sizeof(uint16);
 	uint16* ibo_indices = (uint16*) memalign(GX2_INDEX_BUFFER_ALIGNMENT, ibo_lenght);
-	im2DIbo.push_back(ibo_indices);
 
 	memcpy(ibo_indices, indices, ibo_lenght);
 
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, ibo_indices, ibo_lenght);
-
-	uint32_t vbo_index = im2DVbo.size();
-	im2DVbo.resize(vbo_index+1);
 
 	uint32 vbo_lenght = numVertices * 10 * sizeof(float);
 	float* vbo_verts = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, vbo_lenght);
@@ -220,7 +211,8 @@ im2DRenderIndexedPrimitive(PrimitiveType primType,
 
 	flushCache();
 	GX2SetAttribBuffer(0, vbo_lenght, 10 * sizeof(float), vbo_verts);
-	GX2DrawIndexedEx(primTypeMap[primType], numIndices, GX2_INDEX_TYPE_U16, ibo_indices, 0, 1);
+	GX2DrawIndexedImmediateEx(primTypeMap[primType], numIndices, GX2_INDEX_TYPE_U16, ibo_indices, 0, 1);
+	free(ibo_indices);
 }
 
 // Im3D
@@ -228,7 +220,6 @@ im2DRenderIndexedPrimitive(PrimitiveType primType,
 static Shader *im3DShader;
 
 std::vector<float*> im3DVbo;
-std::vector<uint16*> im3DIbo;
 
 static int32 num3DVertices;	
 
@@ -263,12 +254,8 @@ freeIm3DBuffers(void)
 	for (uint32_t i = 0; i < im3DVbo.size(); i++) {
 		free(im3DVbo[i]);
 	}
-	for (uint32_t i = 0; i < im3DIbo.size(); i++) {
-		free(im3DIbo[i]);
-	}
 
 	im3DVbo.clear();
-	im3DIbo.clear();
 }
 
 void
@@ -324,14 +311,14 @@ im3DRenderIndexedPrimitive(PrimitiveType primType, void *indices, int32 numIndic
 {
 	uint32 ibo_lenght = numIndices * sizeof(uint16);
 	uint16* ibo_indices = (uint16*) memalign(GX2_INDEX_BUFFER_ALIGNMENT, ibo_lenght);
-	im3DIbo.push_back(ibo_indices);
 
 	memcpy(ibo_indices, indices, numIndices * sizeof(uint16));
 
 	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, ibo_indices, ibo_lenght);
 
 	flushCache();
-	GX2DrawIndexedEx(primTypeMap[primType], numIndices, GX2_INDEX_TYPE_U16, ibo_indices, 0, 1);
+	GX2DrawIndexedImmediateEx(primTypeMap[primType], numIndices, GX2_INDEX_TYPE_U16, ibo_indices, 0, 1);
+	free(ibo_indices);
 }
 
 void
