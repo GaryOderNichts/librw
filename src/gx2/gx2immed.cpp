@@ -25,10 +25,6 @@
 namespace rw {
 namespace gx2 {
 
-// adjust if needed
-#define MAXNUMINDICES 10000
-#define MAXNUMVERTICES 10000
-
 static GX2PrimitiveMode primTypeMap[] = {
 	GX2_PRIMITIVE_MODE_POINTS, // invalid
 	GX2_PRIMITIVE_MODE_LINES,
@@ -109,9 +105,6 @@ im2DRenderTriangle(void *vertices, int32 numVertices, int32 vert1, int32 vert2, 
 void
 im2DRenderPrimitive(PrimitiveType primType, void *vertices, int32 numVertices)
 {
-	if(numVertices > MAXNUMVERTICES)
-		return;
-
 	uint32 vbo_lenght = numVertices * 10 * sizeof(float);
 	float* vbo_verts = (float*) memalign(GX2_VERTEX_BUFFER_ALIGNMENT, vbo_lenght);
 	im2DVbo.push_back(vbo_verts);
@@ -161,9 +154,6 @@ im2DRenderIndexedPrimitive(PrimitiveType primType,
 	void *vertices, int32 numVertices,
 	void *indices, int32 numIndices)
 {
-	if(numVertices > MAXNUMVERTICES || numIndices > MAXNUMINDICES)
-		return;
-
 	uint32 ibo_lenght = numIndices * sizeof(uint16);
 	uint16* ibo_indices = (uint16*) memalign(GX2_INDEX_BUFFER_ALIGNMENT, ibo_lenght);
 
