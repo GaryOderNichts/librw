@@ -14,6 +14,7 @@
 #endif
 #include "rwgl3.h"
 #include "rwgl3shader.h"
+#include "rwgl3impl.h"
 
 #define PLUGIN_ID ID_DRIVER
 
@@ -131,9 +132,7 @@ rasterCreateTexture(Raster *raster)
 	natras->filterMode = 0;
 	natras->addressU = 0;
 	natras->addressV = 0;
-
-// TEST
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 16.0f);
+	natras->maxAnisotropy = 1;
 
 	bindTexture(prev);
 	return raster;
@@ -195,6 +194,7 @@ rasterCreateCameraTexture(Raster *raster)
 	natras->filterMode = 0;
 	natras->addressU = 0;
 	natras->addressV = 0;
+	natras->maxAnisotropy = 1;
 
 	bindTexture(prev);
 
@@ -215,6 +215,14 @@ rasterCreateCamera(Raster *raster)
 
 	// TODO: set/check width, height, depth, format?
 
+	// used for locking right now
+	raster->format = Raster::C888;
+	natras->internalFormat = GL_RGB8;
+	natras->format = GL_RGB;
+	natras->type = GL_UNSIGNED_BYTE;
+	natras->hasAlpha = 0;
+	natras->bpp = 3;
+
 	natras->autogenMipmap = 0;
 
 	natras->texid = 0;
@@ -233,12 +241,12 @@ rasterCreateZbuffer(Raster *raster)
 		// have to use RBO on GLES!!
 		glGenRenderbuffers(1, &natras->texid);
 		glBindRenderbuffer(GL_RENDERBUFFER, natras->texid);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, raster->width, raster->height);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, raster->width, raster->height);
 	}else{
 		// TODO: set/check width, height, depth, format?
-		natras->internalFormat = GL_DEPTH_COMPONENT;
-		natras->format = GL_DEPTH_COMPONENT;
-		natras->type = GL_UNSIGNED_BYTE;
+		natras->internalFormat = GL_DEPTH_STENCIL;
+		natras->format = GL_DEPTH_STENCIL;
+		natras->type = GL_UNSIGNED_INT_24_8;
 
 		natras->autogenMipmap = 0;
 
@@ -250,6 +258,7 @@ rasterCreateZbuffer(Raster *raster)
 		natras->filterMode = 0;
 		natras->addressU = 0;
 		natras->addressV = 0;
+		natras->maxAnisotropy = 1;
 
 		bindTexture(prev);
 	}
@@ -320,6 +329,7 @@ allocateDXT(Raster *raster, int32 dxt, int32 numLevels, bool32 hasAlpha)
 	natras->filterMode = 0;
 	natras->addressU = 0;
 	natras->addressV = 0;
+	natras->maxAnisotropy = 1;
 
 	bindTexture(prev);
 
@@ -437,7 +447,7 @@ rasterLock(Raster *raster, int32 level, int32 lockMode)
 
 	assert(raster->privateFlags == 0);
 
-	switch(raster->type & 0xF00){
+	switch(raster->type){
 	case Raster::NORMAL:
 	case Raster::TEXTURE:
 	case Raster::CAMERATEXTURE:
@@ -489,6 +499,23 @@ assert(natras->format == GL_RGBA);
 		raster->privateFlags = lockMode;
 		break;
 
+	case Raster::CAMERA:
+		if(lockMode & Raster::PRIVATELOCK_WRITE)
+			assert(0 && "can't lock framebuffer for writing");
+		raster->width = glGlobals.presentWidth;
+		raster->height = glGlobals.presentHeight;
+		raster->stride = raster->width*natras->bpp;
+		assert(natras->bpp == 3);
+		allocSz = raster->height*raster->stride;
+		px = (uint8*)rwMalloc(allocSz, MEMDUR_EVENT | ID_DRIVER);
+		assert(raster->pixels == nil);
+		raster->pixels = px;
+		glReadBuffer(GL_BACK);
+		glReadPixels(0, 0, raster->width, raster->height, GL_RGB, GL_UNSIGNED_BYTE, px);
+
+		raster->privateFlags = lockMode;
+		break;
+
 	default:
 		assert(0 && "cannot lock this type of raster yet");
 		return nil;
@@ -508,27 +535,37 @@ rasterUnlock(Raster *raster, int32 level)
 
 	assert(raster->pixels);
 
-	if(raster->privateFlags & Raster::LOCKWRITE){
-		uint32 prev = bindTexture(natras->texid);
-		if(natras->isCompressed){
-			glCompressedTexImage2D(GL_TEXTURE_2D, level, natras->internalFormat,
-				raster->width, raster->height, 0,
-				getLevelSize(raster, level),
-				raster->pixels);
-			if(natras->backingStore){
-				assert(level < natras->backingStore->numlevels);
-				memcpy(natras->backingStore->levels[level].data, raster->pixels,
-					natras->backingStore->levels[level].size);
+	switch(raster->type){
+	case Raster::NORMAL:
+	case Raster::TEXTURE:
+	case Raster::CAMERATEXTURE:
+		if(raster->privateFlags & Raster::LOCKWRITE){
+			uint32 prev = bindTexture(natras->texid);
+			if(natras->isCompressed){
+				glCompressedTexImage2D(GL_TEXTURE_2D, level, natras->internalFormat,
+					raster->width, raster->height, 0,
+					getLevelSize(raster, level),
+					raster->pixels);
+				if(natras->backingStore){
+					assert(level < natras->backingStore->numlevels);
+					memcpy(natras->backingStore->levels[level].data, raster->pixels,
+						natras->backingStore->levels[level].size);
+				}
+			}else{
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+				glTexImage2D(GL_TEXTURE_2D, level, natras->internalFormat,
+					     raster->width, raster->height,
+					     0, natras->format, natras->type, raster->pixels);
 			}
-		}else{
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			glTexImage2D(GL_TEXTURE_2D, level, natras->internalFormat,
-				     raster->width, raster->height,
-				     0, natras->format, natras->type, raster->pixels);
+			if(level == 0 && natras->autogenMipmap)
+				glGenerateMipmap(GL_TEXTURE_2D);
+			bindTexture(prev);
 		}
-		if(level == 0 && natras->autogenMipmap)
-			glGenerateMipmap(GL_TEXTURE_2D);
-		bindTexture(prev);
+		break;
+
+	case Raster::CAMERA:
+		// TODO: write?
+		break;
 	}
 
 	rwFree(raster->pixels);
@@ -695,6 +732,83 @@ rasterFromImage(Raster *raster, Image *image)
 	return 1;
 }
 
+Image*
+rasterToImage(Raster *raster)
+{
+	int32 depth;
+	Image *image;
+
+	bool unlock = false;
+	if(raster->pixels == nil){
+		raster->lock(0, Raster::LOCKREAD);
+		unlock = true;
+	}
+
+	Gl3Raster *natras = GETGL3RASTEREXT(raster);
+	if(natras->isCompressed){
+		// TODO
+		RWERROR((ERR_INVRASTER));
+		return nil;
+	}
+
+	void (*conv)(uint8 *out, uint8 *in) = nil;
+	switch(raster->format & 0xF00){
+	case Raster::C1555:
+		depth = 16;
+		conv = conv_ARGB1555_from_RGBA5551;
+		break;
+	case Raster::C8888:
+		depth = 32;
+		conv = conv_RGBA8888_from_RGBA8888;
+		break;
+	case Raster::C888:
+		depth = 24;
+		conv = conv_RGB888_from_RGB888;
+		break;
+
+	default:
+	case Raster::C555:
+	case Raster::C565:
+	case Raster::C4444:
+	case Raster::LUM8:
+		RWERROR((ERR_INVRASTER));
+		return nil;
+	}
+
+	if(raster->format & Raster::PAL4 ||
+	   raster->format & Raster::PAL8){
+		RWERROR((ERR_INVRASTER));
+		return nil;
+	}
+		
+	uint8 *in, *out;
+	image = Image::create(raster->width, raster->height, depth);
+	image->allocate();
+
+	uint8 *imgpixels = image->pixels + (image->height-1)*image->stride;
+	uint8 *pixels = raster->pixels;
+
+	int x, y;
+	assert(image->width == raster->width);
+	assert(image->height == raster->height);
+	for(y = 0; y < image->height; y++){
+		uint8 *imgrow = imgpixels;
+		uint8 *rasrow = pixels;
+		for(x = 0; x < image->width; x++){
+			conv(imgrow, rasrow);
+			imgrow += image->bpp;
+			rasrow += natras->bpp;
+		}
+		imgpixels -= image->stride;
+		pixels += raster->stride;
+	}
+
+	if(unlock)
+		raster->unlock(0);
+
+	return image;
+}
+
 static void*
 createNativeRaster(void *object, int32 offset, int32)
 {
@@ -735,7 +849,7 @@ destroyNativeRaster(void *object, int32 offset, int32)
 			Gl3Raster *oldfb = GETGL3RASTEREXT(natras->fboMate);
 			if(oldfb->fbo){
 				bindFramebuffer(oldfb->fbo);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 			}
 			oldfb->fboMate = nil;
 		}

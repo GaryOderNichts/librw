@@ -667,7 +667,7 @@ correctPathCase(char *filename)
 		sofar[2] = '\0';
 		arg++;
 	}
-	while(dir = strtok(arg, PSEP_S)){
+	while((dir = strtok(arg, PSEP_S))){
 		arg = nil;
 		if(direct = opendir(sofar), dir == nil)
 			return;

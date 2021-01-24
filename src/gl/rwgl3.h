@@ -180,7 +180,7 @@ int32 setLights(WorldLights *lightData);
 
 // per Mesh
 void setTexture(int32 n, Texture *tex);
-void setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops);
+void setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops, float extraSurfProp = 0.0f);
 
 void setAlphaBlend(bool32 enable);
 bool32 getAlphaBlend(void);
@@ -239,6 +239,7 @@ struct Gl3Raster
 	uint8 filterMode;
 	uint8 addressU;
 	uint8 addressV;
+	int32 maxAnisotropy;
 
 	uint32 fbo;		// used for camera texture only!
 	Raster *fboMate;	// color or zbuffer raster mate of this one
@@ -251,6 +252,7 @@ struct Gl3Caps
 	int glversion;
 	bool dxtSupported;
 	bool astcSupported;	// not used yet
+	float maxAnisotropy;
 };
 extern Gl3Caps gl3Caps;
 // GLES can't read back textures very nicely.

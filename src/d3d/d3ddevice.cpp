@@ -63,6 +63,7 @@ struct RwRasterStateCache {
 	Texture::Addressing addressingU;
 	Texture::Addressing addressingV;
 	Texture::FilterMode filter;
+	int32 maxAniso;
 };
 
 #define MAXNUMSTAGES 8
@@ -97,6 +98,7 @@ struct RwStateCache {
 static RwStateCache rwStateCache;
 
 void *constantVertexStream;
+static IDirect3DTexture9 *whiteTex;
 
 D3dShaderState d3dShaderState;
 
@@ -341,7 +343,10 @@ restoreD3d9Device(void)
 		setSamplerState(i, D3DSAMP_ADDRESSU, addressConvMap[rwStateCache.texstage[i].addressingU]);
 		setSamplerState(i, D3DSAMP_ADDRESSV, addressConvMap[rwStateCache.texstage[i].addressingV]);
 		setSamplerState(i, D3DSAMP_MAGFILTER, filterConvMap[rwStateCache.texstage[i].filter]);
-		setSamplerState(i, D3DSAMP_MINFILTER, filterConvMap[rwStateCache.texstage[i].filter]);
+		if(rwStateCache.texstage[i].maxAniso == 1)
+			setSamplerState(i, D3DSAMP_MINFILTER, filterConvMap[rwStateCache.texstage[i].filter]);
+		else
+			setSamplerState(i, D3DSAMP_MINFILTER, D3DTEXF_ANISOTROPIC);
 		setSamplerState(i, D3DSAMP_MIPFILTER, filterConvMap_MIP[rwStateCache.texstage[i].filter]);
 	}
 	for(s = 0; s < MAXNUMSTATES; s++)
@@ -457,7 +462,7 @@ setRasterStage(uint32 stage, Raster *raster)
 			d3ddevice->SetTexture(stage, (IDirect3DTexture9*)d3draster->texture);
 			alpha = d3draster->hasAlpha;
 		}else{
-			d3ddevice->SetTexture(stage, nil);
+			d3ddevice->SetTexture(stage, whiteTex);
 			alpha = 0;
 		}
 		if(stage == 0){
@@ -473,13 +478,24 @@ setRasterStage(uint32 stage, Raster *raster)
 }
 
 static void
-setFilterMode(uint32 stage, int32 filter)
+setFilterMode(uint32 stage, int32 filter, int32 maxAniso = 1)
 {
 	if(rwStateCache.texstage[stage].filter != (Texture::FilterMode)filter){
 		rwStateCache.texstage[stage].filter = (Texture::FilterMode)filter;
 		setSamplerState(stage, D3DSAMP_MAGFILTER, filterConvMap[filter]);
-		setSamplerState(stage, D3DSAMP_MINFILTER, filterConvMap[filter]);
+		if(maxAniso == 1)
+			setSamplerState(stage, D3DSAMP_MINFILTER, filterConvMap[filter]);
+		else
+			setSamplerState(stage, D3DSAMP_MINFILTER, D3DTEXF_ANISOTROPIC);
 		setSamplerState(stage, D3DSAMP_MIPFILTER, filterConvMap_MIP[filter]);
+	}
+	if(rwStateCache.texstage[stage].maxAniso != maxAniso){
+		rwStateCache.texstage[stage].maxAniso = maxAniso;
+		if(maxAniso == 1)
+			setSamplerState(stage, D3DSAMP_MINFILTER, filterConvMap[filter]);
+		else
+			setSamplerState(stage, D3DSAMP_MINFILTER, D3DTEXF_ANISOTROPIC);
+		setSamplerState(stage, D3DSAMP_MAXANISOTROPY, maxAniso);
 	}
 }
 
@@ -509,7 +525,7 @@ setTexture(uint32 stage, Texture *tex)
 		return;
 	}
 	if(tex->raster){
-		setFilterMode(stage, tex->getFilter());
+		setFilterMode(stage, tex->getFilter(), tex->getMaxAnisotropy());
 		setAddressU(stage, tex->getAddressU());
 		setAddressV(stage, tex->getAddressV());
 	}
@@ -1599,6 +1615,7 @@ initD3D(void)
 {
 	int32 s, t;
 
+	memset(&deviceCache, 0, sizeof(deviceCache));
 	d3ddevice->GetRenderTarget(0, &d3d9Globals.defaultRenderTarget);
 	d3d9Globals.defaultRenderTarget->Release();	// refcount increased by Get
 	deviceCache.renderTargets[0] = d3d9Globals.defaultRenderTarget;
@@ -1829,6 +1846,17 @@ initD3D(void)
 		setAddressV(t, Texture::WRAP);
 	}
 
+	IDirect3DSurface9 *surf;
+	D3DLOCKED_RECT lr;
+	uint8 whitepixel[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+	whiteTex = (IDirect3DTexture9*)createTexture(1, 1, 1, 0, D3DFMT_X8R8G8B8);
+	whiteTex->GetSurfaceLevel(0, &surf);
+	HRESULT res = surf->LockRect(&lr, 0, D3DLOCK_NOSYSLOCK);
+	assert(res == D3D_OK);
+	memcpy(lr.pBits, whitepixel, 4);
+	surf->UnlockRect();
+	surf->Release();
+
 	openIm2D();
 	openIm3D();
 
@@ -1840,6 +1868,9 @@ termD3D(void)
 {
 	destroyVertexBuffer(constantVertexStream);
 	constantVertexStream = nil;
+
+	destroyTexture(whiteTex);
+	whiteTex = nil;
 
 	closeIm3D();
 	closeIm2D();

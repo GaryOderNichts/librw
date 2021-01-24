@@ -324,6 +324,7 @@ void conv_BGR888_from_RGB888(uint8 *out, uint8 *in);
 void conv_ARGB1555_from_ARGB1555(uint8 *out, uint8 *in);
 void conv_ARGB1555_from_RGB555(uint8 *out, uint8 *in);
 void conv_RGBA5551_from_ARGB1555(uint8 *out, uint8 *in);
+void conv_ARGB1555_from_RGBA5551(uint8 *out, uint8 *in);
 void conv_RGBA8888_from_ARGB1555(uint8 *out, uint8 *in);
 void conv_ABGR1555_from_ARGB1555(uint8 *out, uint8 *in);
 inline void conv_8_from_8(uint8 *out, uint8 *in) { *out = *in; }
@@ -403,11 +404,18 @@ struct Texture
 	static bool32 getMipmapping(void);
 	static bool32 getAutoMipmapping(void);
 
+	void setMaxAnisotropy(int32 maxaniso);	// only if plugin is attached
+	int32 getMaxAnisotropy(void);
+
 #ifndef RWPUBLIC
 	static void registerModule(void);
 #endif
 };
 
+extern int32 anisotOffset;
+#define GETANISOTROPYEXT(texture) PLUGINOFFSET(int32, texture, rw::anisotOffset)
+void registerAnisotropyPlugin(void);
+int32 getMaxSupportedMaxAnisotropy(void);
 
 struct SurfaceProperties
 {
@@ -748,7 +756,7 @@ struct Camera
 	Raster *frameBuffer;
 	Raster *zBuffer;
 
-	// Device dependant view and projection matrices
+	// Device dependent view and projection matrices
 	// optional
 	RawMatrix devView;
 	RawMatrix devProj;
