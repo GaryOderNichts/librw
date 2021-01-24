@@ -18,8 +18,6 @@
 namespace rw {
 namespace gx2 {
 
-std::vector<GX2RBuffer> blockBufs;
-
 GX2SamplerVar *GX2GetPixelSamplerVar(const GX2PixelShader *shader, const char *name)
 {
 	for (uint32_t i = 0; i < shader->samplerVarCount; i++)
@@ -31,34 +29,22 @@ GX2SamplerVar *GX2GetPixelSamplerVar(const GX2PixelShader *shader, const char *n
 	return NULL;
 }
 
-uint32 GX2GetPixelSamplerVarLocation(const GX2PixelShader *shader, const char *name)
+int32 GX2GetPixelSamplerVarLocation(const GX2PixelShader *shader, const char *name)
 {
 	GX2SamplerVar *sampler = GX2GetPixelSamplerVar(shader, name);
 	return sampler ? sampler->location : -1;
 }
 
-uint32 GX2GetPixelUniformVarOffset(const GX2PixelShader *shader, const char *name)
+int32 GX2GetPixelUniformVarOffset(const GX2PixelShader *shader, const char *name)
 {
 	GX2UniformVar *uniform = GX2GetPixelUniformVar(shader, name);
 	return uniform ? uniform->offset : -1;
 }
 
-uint32 GX2GetVertexUniformVarOffset(const GX2VertexShader *shader, const char *name)
+int32 GX2GetVertexUniformVarOffset(const GX2VertexShader *shader, const char *name)
 {
 	GX2UniformVar *uniform = GX2GetVertexUniformVar(shader, name);
 	return uniform ? uniform->offset : -1;
-}
-
-uint32 GX2GetPixelUniformBlockOffset(const GX2PixelShader *shader, const char *name)
-{
-	GX2UniformBlock *block = GX2GetPixelUniformBlock(shader, name);
-	return block ? block->offset : -1;
-}
-
-uint32 GX2GetVertexUniformBlockOffset(const GX2VertexShader *shader, const char *name)
-{
-	GX2UniformBlock *block = GX2GetVertexUniformBlock(shader, name);
-	return block ? block->offset : -1;
 }
 
 void GX2SetShaderMode(GX2ShaderMode mode)
@@ -107,59 +93,6 @@ void setUniform(int32 location, int32 count, const void* data)
 		GX2SetVertexUniformReg(currentShader->uniforms[location].vertexLocation, count, data);
 }
 
-int32 registerBlock(const char *name)
-{
-	int i = findBlock(name);
-	if(i >= 0) return i;
-	
-	if(uniformRegistry.numBlocks+1 >= MAX_BLOCKS)
-		return -1;
-	uniformRegistry.blockNames[uniformRegistry.numBlocks] = strdup(name);
-	return uniformRegistry.numBlocks++;
-}
-
-int32 findBlock(const char *name)
-{
-	for(int i = 0; i < uniformRegistry.numBlocks; i++)
-	{
-		if(strcmp(name, uniformRegistry.blockNames[i]) == 0)
-			return i;
-	}
-	return -1;
-}
-
-void setBlock(int32 location, int32 size, void* data)
-{
-	GX2RBuffer buf;
-	buf.elemCount = size / sizeof(float);
-	buf.elemSize = sizeof(float);
-	buf.flags = (GX2RResourceFlags) (GX2R_RESOURCE_BIND_UNIFORM_BLOCK|GX2R_RESOURCE_USAGE_CPU_WRITE|GX2R_RESOURCE_USAGE_GPU_READ);
-	GX2RCreateBuffer(&buf);
-	blockBufs.push_back(buf);
-
-	float* lock = (float*) GX2RLockBufferEx(&buf, (GX2RResourceFlags) 0);
-
-	memcpy(lock, data, size);
-	for (int i = 0; i < size / sizeof(float); ++i)
-		lock[i] = _floatswap32(lock[i]);
-
-	GX2RUnlockBufferEx(&buf, (GX2RResourceFlags) 0);
-
-
-	if (currentShader->blocks[location].pixelLocation != -1)
-		GX2RSetPixelUniformBlock(&buf, currentShader->blocks[location].pixelLocation, 0);
-	if (currentShader->blocks[location].vertexLocation != -1)
-		GX2RSetVertexUniformBlock(&buf, currentShader->blocks[location].vertexLocation, 0);
-}
-
-void shaders_clean()
-{
-	for (GX2RBuffer& buf : blockBufs) {
-		GX2RDestroyBufferEx(&buf, (GX2RResourceFlags) 0);
-	}
-	blockBufs.clear();
-}
-
 Shader *currentShader;
 
 Shader*
@@ -199,13 +132,6 @@ bool Shader::init(void)
 		uniforms[i].vertexLocation = GX2GetVertexUniformVarOffset(group.vertexShader, uniformRegistry.uniformNames[i]);
 	}
 
-	blocks = rwNewT(Uniform, uniformRegistry.numBlocks, MEMDUR_EVENT | ID_DRIVER);
-	for(int i = 0; i < uniformRegistry.numBlocks; i++)
-	{
-		blocks[i].pixelLocation = GX2GetPixelUniformBlockOffset(group.pixelShader, uniformRegistry.blockNames[i]);
-		blocks[i].vertexLocation = GX2GetVertexUniformBlockOffset(group.vertexShader, uniformRegistry.blockNames[i]);
-	}
-
 	return true;
 }
 
@@ -227,7 +153,6 @@ Shader::destroy(void)
 {
 	WHBGfxFreeShaderGroup(&group);
 	rwFree(this->uniforms);
-	rwFree(this->blocks);
 	rwFree(this);
 }
 

@@ -98,10 +98,6 @@ static GX2ShaderState shaderState;
 GX2Texture whitetex;
 GX2Sampler whitesamp;
 
-/* define to use uniform blocks */
-// #define RW_GX2_USE_UBOS
-
-#ifndef RW_GX2_USE_UBOS
 // State
 int32 u_fogData;
 int32 u_fogColor;
@@ -117,11 +113,6 @@ int32 u_lightParams;
 int32 u_lightPosition;
 int32 u_lightDirection;
 int32 u_lightColor;
-#else
-int32 ubo_state;
-int32 ubo_scene;
-int32 ubo_object;
-#endif
 
 int32 u_matColor;
 int32 u_surfProps;
@@ -894,7 +885,6 @@ flushCache(void)
 {
 	flushGX2RenderState();
 
-#ifndef RW_GX2_USE_UBOS
 	if(lastShaderUploaded != currentShader){
 		lastShaderUploaded = currentShader;
 		objectDirty = 1;
@@ -947,24 +937,6 @@ flushCache(void)
 		setUniform(u_fogColor, 4, &uniformState.fogColor);
 		uniformStateDirty[RWGX2_FOGCOLOR] = false;
 	}
-#else
-	if(objectDirty){
-		setBlock(ubo_object, sizeof(RawMatrix), &uniformObject);
-		objectDirty = 0;
-	}
-	if(sceneDirty){
-		setBlock(ubo_scene, sizeof(UniformScene), &uniformScene);
-		sceneDirty = 0;
-	}
-	if(stateDirty){
-		uniformState.fogDisable = rwStateCache.fogEnable ? 0.0f : 1.0f;
-		uniformState.fogStart = rwStateCache.fogStart;
-		uniformState.fogEnd = rwStateCache.fogEnd;
-		uniformState.fogRange = 1.0f/(rwStateCache.fogStart - rwStateCache.fogEnd);
-		// setBlock(ubo_state, sizeof(UniformState), &uniformState);
-		stateDirty = 0;
-	}
-#endif
 }
 
 static void
@@ -1108,9 +1080,6 @@ endUpdate(Camera *cam)
 
 	freeIm2DBuffers();
 	freeIm3DBuffers();
-#ifdef RW_GX2_USE_UBOS
-	shaders_clean();
-#endif
 }
 
 static void
@@ -1412,7 +1381,7 @@ static int
 initGX2()
 {
 	lastShaderUploaded = nil;
-#ifndef RW_GX2_USE_UBOS
+
 	u_fogData = registerUniform("u_fogData");
 	u_fogColor = registerUniform("u_fogColor");
 	u_proj = registerUniform("u_proj");
@@ -1423,11 +1392,6 @@ initGX2()
 	u_lightPosition = registerUniform("u_lightPosition");
 	u_lightDirection = registerUniform("u_lightDirection");
 	u_lightColor = registerUniform("u_lightColor");
-#else
-	ubo_scene = registerBlock("Scene");
-	ubo_object = registerBlock("Object");
-	ubo_state = registerBlock("State");
-#endif
 
 	u_matColor = registerUniform("u_matColor");
 	u_surfProps = registerUniform("u_surfProps");
