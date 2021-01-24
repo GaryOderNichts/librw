@@ -88,6 +88,7 @@ struct GX2ShaderState
 {
 	RGBA matColor;
 	SurfaceProperties surfProps;
+	float extraSurfProp;
 };
 
 static UniformState uniformState;
@@ -857,7 +858,7 @@ setViewMatrix(float32 *mat)
 Shader *lastShaderUploaded;
 
 void
-setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops)
+setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops, float extraSurfProp)
 {
 	bool force = lastShaderUploaded != currentShader;
 	if(force || !equal(shaderState.matColor, color)){
@@ -875,7 +876,7 @@ setMaterial(const RGBA &color, const SurfaceProperties &surfaceprops)
 		surfProps[0] = surfaceprops.ambient;
 		surfProps[1] = surfaceprops.specular;
 		surfProps[2] = surfaceprops.diffuse;
-		surfProps[3] = 0.0f;
+		surfProps[3] = extraSurfProp;
 		setUniform(u_surfProps, 4, surfProps);
 		shaderState.surfProps = surfaceprops;
 	}
