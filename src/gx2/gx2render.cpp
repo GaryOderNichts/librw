@@ -24,7 +24,7 @@ void
 drawInst_simple(InstanceDataHeader *header, InstanceData *inst)
 {
 	flushCache();
-	GX2DrawIndexedImmediateEx(header->primType, inst->numIndex, GX2_INDEX_TYPE_U16, ((uint8*)header->indexBuffer)+inst->offset, 0, 1);
+	GX2DrawIndexedEx(header->primType, inst->numIndex, GX2_INDEX_TYPE_U16, ((uint8*)header->indexBuffer)+inst->offset, 0, 1);
 }
 
 void
