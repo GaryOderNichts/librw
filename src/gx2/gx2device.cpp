@@ -384,7 +384,7 @@ static GX2TexClampMode addressConvMap[] = {
 };
 
 static void
-setFilterMode(uint32 stage, int32 filter)
+setFilterMode(uint32 stage, int32 filter, int32 maxAniso = 1)
 {
 	if(rwStateCache.texstage[stage].filter != (Texture::FilterMode)filter)
 	{
@@ -393,13 +393,14 @@ setFilterMode(uint32 stage, int32 filter)
 		if(raster)
 		{
 			GX2Raster *natras = PLUGINOFFSET(GX2Raster, rwStateCache.texstage[stage].raster, nativeRasterOffset);
-			if(natras->filterMode != filter && natras->sampler)
+			if((natras->filterMode != filter || natras->maxAnisotropy != maxAniso) && natras->sampler)
 			{
-				GX2InitSamplerXYFilter(natras->sampler, filterConvMap_NoMIP[filter], filterConvMap_NoMIP[filter], GX2_TEX_ANISO_RATIO_NONE);
+				GX2InitSamplerXYFilter(natras->sampler, filterConvMap_NoMIP[filter], filterConvMap_NoMIP[filter], (GX2TexAnisoRatio) maxAniso);
 				if(natras->autogenMipmap || natras->numLevels > 1) {
-					GX2InitSamplerZMFilter(natras->sampler, GX2_TEX_Z_FILTER_MODE_POINT, filterConvMap_MIP[filter]);
+					GX2InitSamplerZMFilter(natras->sampler, GX2_TEX_Z_FILTER_MODE_NONE, filterConvMap_MIP[filter]);
 				}
 				natras->filterMode = filter;
+				natras->maxAnisotropy = maxAniso;
 			}
 		}
 	}

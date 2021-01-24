@@ -88,6 +88,7 @@ rasterCreateTexture(Raster *raster)
 
 	natras->addressU = 0;
 	natras->addressV = 0;
+	natras->maxAnisotropy = 1;
 
 	natras->sampler = (GX2Sampler*) calloc(1, sizeof(GX2Sampler));
 	GX2InitSampler(natras->sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
@@ -144,6 +145,7 @@ rasterCreateCameraTexture(Raster *raster)
 
 	natras->addressU = 0;
 	natras->addressV = 0;
+	natras->maxAnisotropy = 1;
 
 	natras->sampler = (GX2Sampler*) calloc(1, sizeof(GX2Sampler));
 	GX2InitSampler(natras->sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);

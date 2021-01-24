@@ -597,6 +597,9 @@ getMaxSupportedMaxAnisotropy(void)
 #ifdef RW_GL3
 	return (int32)gl3::gl3Caps.maxAnisotropy;
 #endif
+#ifdef __WIIU__
+	return 4;
+#endif
 	return 1;
 }
 

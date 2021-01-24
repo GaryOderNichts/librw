@@ -231,6 +231,7 @@ struct GX2Raster
 	int32 filterMode;
 	int32 addressU;
 	int32 addressV;
+	int32 maxAnisotropy;
 };
 
 Texture *readNativeTexture(Stream *stream);
