@@ -32,7 +32,7 @@
 ; $UNIFORM_VARS[3].type = "vec4"
 ; $UNIFORM_VARS[3].count = 1
 ; $UNIFORM_VARS[3].block = -1
-; $UNIFORM_VARS[3].offset = 60
+; $UNIFORM_VARS[3].offset = 48
 
 ; R1
 ; $ATTRIB_VARS[0].name = "in_pos"
