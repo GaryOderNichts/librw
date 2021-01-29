@@ -171,9 +171,9 @@
     41 x: MUL       ____,   PV0.x, C15.z
     42 x: MAX       ____,   PV0.x, C15.w
     43 x: MIN       R8.x,   PV0.x, 1.0f
-    44 x: MULADD    R3.x,   C12.x, C14.x, R3.x
-       y: MULADD    R3.y,   C12.y, C14.x, R3.y
-       z: MULADD    R3.z,   C12.z, C14.x, R3.z
+    44 x: MULADD    R3.x,   C12.x, C14.x, R3.x CLAMP
+       y: MULADD    R3.y,   C12.y, C14.x, R3.y CLAMP
+       z: MULADD    R3.z,   C12.z, C14.x, R3.z CLAMP
     45 x: MUL       R3.x,   R3.x,  C13.x
        y: MUL       R3.y,   R3.y,  C13.y
        z: MUL       R3.z,   R3.z,  C13.z

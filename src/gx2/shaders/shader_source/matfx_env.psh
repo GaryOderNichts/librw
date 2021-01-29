@@ -40,43 +40,43 @@
 ; $SAMPLER_VARS[1].type = "SAMPLER2D"
 ; $SAMPLER_VARS[1].location = 1
 
-00 ALU: ADDR(32) CNT(8)
+00 ALU: ADDR(32) CNT(7)
     0  x: MAX    R4.x, R0.x,  C2.x
        y: MAX    R4.y, R0.y,  C2.y
        z: MAX    R4.z, R0.z,  C2.z
        w: MAX    R4.w, R0.w,  C2.w
-    1  y: ADD    R1.y, -R1.y, 1.0f
-    2  y: ADD    R2.y, -R2.y, 1.0f
+    1  x: ADD    R1.y, -R1.y, 1.0f
+       y: ADD    R2.y, -R2.y, 1.0f
 01 TEX: ADDR(80) CNT(2) VALID_PIX
-    3  SAMPLE    R1, R1.xy0x, t0, s0
-    4  SAMPLE    R2, R2.xy0x, t1, s1
-02 ALU: ADDR(40) CNT(28)
-    5  x: MUL    R0.x, R0.x,  R1.x
+    2  SAMPLE    R1, R1.xy0x, t0, s0
+    3  SAMPLE    R2, R2.xy0x, t1, s1
+02 ALU: ADDR(39) CNT(28)
+    4  x: MUL    R0.x, R0.x,  R1.x
        y: MUL    R0.y, R0.y,  R1.y
        z: MUL    R0.z, R0.z,  R1.z
        w: MUL    R0.w, R0.w,  R1.w
-    6  x: MUL    R4.x, R4.x,  C1.x
+    5  x: MUL    R4.x, R4.x,  C1.x
        y: MUL    R4.y, R4.y,  C1.x
        z: MUL    R4.z, R4.z,  C1.x
        w: MUL    R4.w, R4.w,  C1.x
-    7  x: MUL    R4.x, R4.x,  R2.x
+    6  x: MUL    R4.x, R4.x,  R2.x
        y: MUL    R4.y, R4.y,  R2.y
        z: MUL    R4.z, R4.z,  R2.z
        w: MUL    R4.w, R4.w,  R2.w
-    8  x: ADD    ____, R0.x,  -C0.x
+    7  x: ADD    ____, R0.x,  -C0.x
        y: ADD    ____, R0.y,  -C0.y
        z: ADD    ____, R0.z,  -C0.z
-    9  x: MULADD R0.x, PV0.x, R3.x, C0.x
+    8  x: MULADD R0.x, PV0.x, R3.x, C0.x
        y: MULADD R0.y, PV0.y, R3.x, C0.y
        z: MULADD R0.z, PV0.z, R3.x, C0.z
-    10 x: MUL    R4.x, R4.x,  R3.x
+    9  x: MUL    R4.x, R4.x,  R3.x
        y: MUL    R4.y, R4.y,  R3.x
        z: MUL    R4.z, R4.z,  R3.x
-    11 x: MAX    R5.x, R0.w,  C1.y
-    12 x: MUL    ____, R4.x,  R5.x
+    10 x: MAX    R5.x, R0.w,  C1.y
+    11 x: MUL    ____, R4.x,  R5.x
        y: MUL    ____, R4.y,  R5.x
        z: MUL    ____, R4.z,  R5.x
-    13 x: MULADD R0.x, R0.x,  R0.w, PV0.x
+    12 x: MULADD R0.x, R0.x,  R0.w, PV0.x
        y: MULADD R0.y, R0.y,  R0.w, PV0.y
        z: MULADD R0.z, R0.z,  R0.w, PV0.z
 03 EXP_DONE: PIX0, R0

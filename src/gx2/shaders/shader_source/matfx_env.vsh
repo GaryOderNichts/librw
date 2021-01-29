@@ -197,9 +197,9 @@
        y: MULADD    R127.y, R6.y,  C17.y, PV0.y
     50 x: MULADD    R9.x,   R6.x,  C16.x, PV0.x
        y: MULADD    R9.y,   R6.x,  C16.y, PV0.y
-    51 x: MULADD    R3.x,   C12.x, C14.x, R3.x
-       y: MULADD    R3.y,   C12.y, C14.x, R3.y
-       z: MULADD    R3.z,   C12.z, C14.x, R3.z
+    51 x: MULADD    R3.x,   C12.x, C14.x, R3.x CLAMP
+       y: MULADD    R3.y,   C12.y, C14.x, R3.y CLAMP
+       z: MULADD    R3.z,   C12.z, C14.x, R3.z CLAMP
     52 x: MUL       R3.x,   R3.x,  C13.x
        y: MUL       R3.y,   R3.y,  C13.y
        z: MUL       R3.z,   R3.z,  C13.z
