@@ -512,6 +512,7 @@ public:
 class StreamFile : public Stream
 {
 	FILE *file;
+	char *buffer;
 public:
 	StreamFile(void) { file = nil; }
 	void close(void);

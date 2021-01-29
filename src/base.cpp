@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <math.h>
 #include <ctype.h>
+#include <malloc.h>
 
 #define PSEP_C '/'
 #define PSEP_S "/"
@@ -18,6 +19,8 @@
 #include "rwpipeline.h"
 #include "rwobjects.h"
 #include "rwengine.h"
+
+#define IO_BUFFER_SIZE (128*1024)
 
 namespace rw {
 
@@ -1006,6 +1009,8 @@ StreamFile::open(const char *path, const char *mode)
 		RWERROR((ERR_FILE, path));
 		return nil;
 	}
+	this->buffer = (char*) memalign(0x40, IO_BUFFER_SIZE);
+	setvbuf(this->file, this->buffer, _IOFBF, IO_BUFFER_SIZE);
 	return this;
 }
 
@@ -1015,6 +1020,8 @@ StreamFile::close(void)
 	assert(this->file);
 	fclose(this->file);
 	this->file = nil;
+	free(this->buffer);
+	this->buffer = nil;
 }
 
 uint32
