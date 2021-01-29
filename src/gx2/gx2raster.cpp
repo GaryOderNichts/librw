@@ -126,14 +126,12 @@ rasterCreateCameraTexture(Raster *raster)
 	case Raster::C888:
 	case Raster::C8888:
 	case Raster::C1555:
+	default:
 		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
 		natras->hasAlpha = true;
 		natras->bpp = 4;
 		raster->depth = 32;
 		break;
-	default:
-		RWERROR((ERR_INVRASTER));
-		return nil;
 	}
 
 	GX2RCreateSurface(&tex->surface, (GX2RResourceFlags)(GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ));
