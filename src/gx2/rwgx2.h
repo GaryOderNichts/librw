@@ -12,6 +12,7 @@
 #include <gx2/display.h>
 #include <gx2/shaders.h>
 #include <gx2/temp.h>
+#include <gx2/utils.h>
 #include <gx2r/mem.h>
 #include <gx2r/buffer.h>
 #include <gx2r/draw.h>

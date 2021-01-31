@@ -25,6 +25,24 @@
 #include <proc_ui/procui.h>
 #include <whb/log.h>
 
+// wut is currently missing those (copied from retroarch)
+typedef struct GX2Rect
+{
+	int32_t left;
+	int32_t top;
+	int32_t right;
+	int32_t bottom;
+} GX2Rect;
+
+typedef struct GX2Point
+{
+	int32_t x;
+	int32_t y;
+} GX2Point;
+
+extern "C" void GX2CopySurfaceEx(GX2Surface *src, uint32_t srcLevel, uint32_t srcDepth, GX2Surface *dst, uint32_t dstLevel,
+			uint32_t dstDepth, uint32_t numRegions, GX2Rect *srcRegion, GX2Point *dstCoords);
+
 namespace rw {
 namespace gx2 {
 
@@ -1105,10 +1123,21 @@ rasterRenderFast(Raster *raster, int32 x, int32 y)
 	switch(dst->type){
 	case Raster::NORMAL:
 	case Raster::TEXTURE:
-	// case Raster::CAMERATEXTURE:
+	case Raster::CAMERATEXTURE:
 		switch(src->type){
 		case Raster::CAMERA:
-			// TODO render raster to camera
+			{
+				GX2ColorBuffer* frameBuf = (GX2ColorBuffer*) natsrc->texture;
+				GX2Texture* texture = (GX2Texture*) natdst->texture;
+
+				GX2Rect rect = { x, y, x + src->width, y + src->height };
+				GX2Point point = { x, y }; // { x, dst->height - src->height };
+				GX2CopySurfaceEx(&frameBuf->surface, 0, 0, &texture->surface, texture->viewFirstMip, texture->viewFirstSlice, 1, &rect, &point);
+
+				GX2DrawDone();
+
+				GX2SetContextState(globals.contextState);
+			}
 			return 1;
 		}
 		break;
@@ -1359,7 +1388,8 @@ closeGX2(void)
 	return 1;
 }
 
-void createWhiteTexture(void)
+static void
+createWhiteTexture(void)
 {
 	whitetex.surface.width = 1;
 	whitetex.surface.height = 1;
@@ -1368,7 +1398,7 @@ void createWhiteTexture(void)
 	whitetex.surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
 	whitetex.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
 	whitetex.viewNumSlices = 1;
-	whitetex.compMap = 0x00010203;
+	whitetex.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
 	GX2CalcSurfaceSizeAndAlignment(&whitetex.surface);
 	GX2InitTextureRegs(&whitetex);
 

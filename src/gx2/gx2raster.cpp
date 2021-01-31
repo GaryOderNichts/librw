@@ -48,7 +48,7 @@ rasterCreateTexture(Raster *raster)
 	tex->surface.aa = GX2_AA_MODE1X;
 	tex->surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
 	tex->viewNumSlices = 1;
-	tex->compMap = 0x00010203;
+	tex->compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
 
 	switch(raster->format & 0xF00){
 	case Raster::C888:
@@ -120,13 +120,20 @@ rasterCreateCameraTexture(Raster *raster)
 	tex->surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
 	tex->viewNumMips = 1;
 	tex->viewNumSlices = 1;
-	tex->compMap = 0x00010203;
 
 	switch(raster->format & 0xF00){
-	case Raster::C888:
 	case Raster::C8888:
 	case Raster::C1555:
+		tex->compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
+		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
+		natras->hasAlpha = true;
+		natras->bpp = 4;
+		raster->depth = 32;
+		break;
+	case Raster::C888:
 	default:
+		// disable alpha in our comp map
+		tex->compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_1);
 		tex->surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
 		natras->hasAlpha = true;
 		natras->bpp = 4;
